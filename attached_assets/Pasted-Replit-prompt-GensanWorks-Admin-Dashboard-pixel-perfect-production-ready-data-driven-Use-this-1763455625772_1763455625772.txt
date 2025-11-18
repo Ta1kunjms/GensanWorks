@@ -1,0 +1,387 @@
+Replit prompt — GensanWorks Admin Dashboard (pixel-perfect, production-ready, data-driven)
+
+Use this as the single prompt to paste into Replit (or into an AI coding assistant). It must produce a full React + Tailwind app (Vite or Create-React-App) with real components, Chart.js, responsive layout, and a small mock API (local JSON / MSW / simple Express dev server). Important: cards must be data-driven (read from API / context), not hard-coded — but include a seed dataset that reproduces the values in the visual spec so the UI looks identical on first run.
+
+Objective (one-line)
+
+Build a pixel-perfect, responsive Admin Dashboard UI named GensanWorks that matches the supplied visual spec exactly (positions, spacing, typography, colors, icons, shadows, radii, charts, data values and table sample), while being fully functional and data-driven.
+
+Tech stack & setup (must be used)
+
+React (latest)
+
+TypeScript (recommended)
+
+TailwindCSS (for styling) — include tailwind.config with design tokens matching spec
+
+Headless UI / shadcn components optional for accessible components
+
+Chart.js (react-chartjs-2) for bar/doughnut/line charts
+
+React Router (single page admin)
+
+Mock API: json-server or MSW (so cards read from /api/summary, charts from /api/charts, table from /api/referrals)
+
+Icons: Lucide or Bootstrap Icons (stroke style)
+
+Build/responsive target: 1920×1080 layout default, auto-fit down to 1366 / 1024 / 768
+
+Deliverables: runnable Replit project with npm run dev, README with run instructions, and a single seed-data.json file
+
+Global UI tokens (exact)
+
+System name: GensanWorks
+
+Subtitle: Official Job Assistance Platform of PESO – General Santos City
+
+Fonts: Inter (fall back to system sans)
+
+Theme colors (use exact hex tokens below):
+
+Soft LGU blue: #2E7FFB (primary)
+
+Dark navy (sidebar): #0F1B2D
+
+White: #FFFFFF
+
+Green (positive): #12B76A
+
+Red (negative): #F04438
+
+Neutral text: #0B1220
+
+Card bg: #FFFFFF
+
+Chart gray/gridlines: #E6EEF8
+
+Accent red (logo): #FF4D4F
+
+Border radius on cards: 16px
+
+Shadows: subtle, e.g. box-shadow: 0 1px 0 rgba(2,6,23,0.06), 0 2px 6px rgba(2,6,23,0.04)
+
+Spacing scale: base 8px unit (Tailwind default)
+
+Card elevation: very subtle (no heavy blur)
+
+Layout requirements (must match visual proportions)
+
+Left fixed sidebar (dark navy), 280px width on 1920 layout; collapsible to 80px but keep active state visible
+
+Top nav: full width, 72px height, centered page title
+
+Main content area: margin-left = sidebar width; content max width fits 1920×1080 with center alignment
+
+Grid: summary cards in 3 columns × 2 rows (each card equal height) — exact spacing per spec
+
+Right-side Recent Activities card anchored to the top-right column (matching reference)
+
+Charts row: three equal-width cards (Applicants by Barangay bar chart, Doughnut Jobseeker vs Freelancer, Monthly Referrals line chart)
+
+Bottom table: full-width card spanning content width, with filters aligned to the right inside header
+
+Sidebar (exact order & behavior)
+
+Dark navy background #0F1B2D, white icons/text
+
+Menu items, top → bottom (exact order):
+
+Home (active — blue highlight background: #E8F2FF, left accent bar #2E7FFB)
+
+Applicants
+
+Employers
+
+Jobs
+
+Matching
+
+Reports
+
+Events
+
+Programs
+
+Settings
+
+Help
+
+Logout
+
+Bottom user card: round avatar (circular), Name: Tycoon James Flores, Label: Admin — small text, white
+
+Sidebar fixed on scroll and scrollable internally if too long
+
+Top navbar (exact)
+
+Left: GensanWorks logo (blue primary + small red accent) and subtitle under small logo text
+
+Center: Page title Dashboard Overview (Inter, medium/semibold)
+
+Right:
+
+Rounded search input placeholder: Search applicants, employers, job posts… (with search icon)
+
+Buttons (left to right):
+
++ New Job Post (white bg, dark text, rounded)
+
++ Add Applicant (white bg, dark text)
+
+Generate Report (green pill: #12B76A, white text)
+
+Summary cards — data-driven (seed provided)
+
+Important: cards must read values from /api/summary. Provide a default seed that yields the following values visually — but code should accept arbitrary responses.
+
+Seed (/api/summary sample):
+
+{
+  "totalApplicants": { "value": 1318, "change": 4.2, "trend": "up" },
+  "activeEmployers": { "value": 119, "change": 1.2, "trend": "up" },
+  "activeJobPosts": { "value": 36, "change": -2.6, "trend": "down" },
+  "pendingEmployerFeedback": { "value": 13, "change": 7.8, "trend": "up" },
+  "successfulReferrals": { "value": 713, "change": 52.7, "trend": "up" },
+  "activeFreelancers": { "value": 47, "change": 3.1, "trend": "up" }
+}
+
+
+Card visuals:
+
+Number (large), underneath change with caret / arrow: green with #12B76A when trend: "up", red #F04438 when down.
+
+Use small sparkline inside each card matching the change direction (optional but included).
+
+Recent Activities (right column card)
+
+Seed (/api/recent-activities):
+
+[
+  "New applicant from Labangal registered",
+  "Employer ABC posted 3 new vacancies",
+  "Referral slip issued to Maria Santos"
+]
+
+
+Bullet list inside card, timestamp optional
+
+Title: Recent Activities
+
+Charts — exact datasets & visuals
+
+1) Applicants by Barangay — Bar Chart
+
+X labels: barangays A → Z (use realistic barangay names if desired, but label pattern must match A..Z)
+
+Y axis: 0–100
+
+Two series per barangay:
+
+Job Seeker (black stroke/fill)
+
+Freelancer (blue fill #2E7FFB)
+
+Use the seed to create the bar heights so bars are taller in mid letters — provide explicit array in /api/charts/bar.
+
+Legend at top-left inside card (small icons).
+
+Seed example:
+
+{
+  "barangays": ["A", "B", "C", ..., "Z"],
+  "jobSeeker": [12, 20, 18, 25, 70, 80, 90, 85, 78, 66, 60, 58, 50, 48, 45, 40, 35, 30, 28, 26, 22, 18, 15, 12, 10, 8],
+  "freelancer": [1,2,1,0,3,4,5,4,3,2,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+}
+
+
+2) Jobseeker vs Freelancer — Doughnut Chart
+
+Outer ring dark background, inner ring white cutout
+
+Values: Job Seeker: 96.43% → 1271 ; Freelancer: 3.57% → 47
+
+Side labels: show exact counts and percent. Use /api/charts/doughnut seed with those values.
+
+Seed:
+
+{"jobSeeker": 1271, "freelancer": 47}
+
+
+3) Monthly Referrals Trend — Line Chart
+
+Months JAN → DEC (x)
+
+Three series:
+
+Referred (orange)
+
+Hired (green #12B76A)
+
+Feedback (blue #2E7FFB)
+
+Provide data with ups & downs that visually match reference; seed in /api/charts/line.
+
+Seed (example):
+
+{
+ "months":["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"],
+ "referred":[120,130,110,140,150,160,170,155,140,130,125,135],
+ "hired":[40,45,50,55,60,90,100,95,80,75,70,85],
+ "feedback":[10,12,11,14,20,25,30,28,20,18,17,22]
+}
+
+
+Rendering notes
+
+Chart axes, gridlines, fonts must match Inter face and exact colors.
+
+Doughnut inner background white ring; outer background dark ring for contrast.
+
+Referral & Placement Summary table (bottom)
+
+Title: Referral & Placement Summary
+
+Filters on right: Barangay, Employer, Job Category, Date range, Status, and a green pill Export to CSV button
+
+Table columns (exact order):
+
+Referral ID
+
+Applicant
+
+Vacancy
+
+Employer
+
+Date Referred
+
+Status (with colored dot)
+
+Feedback
+
+Actions (icons)
+
+Sample row must appear exactly (from /api/referrals seed):
+
+{
+  "referralId":"RFL-2025-0112",
+  "applicant":"Ren Paulo Galas",
+  "vacancy":"Office Staff",
+  "employer":"Jaro Construction & Supply",
+  "dateReferred":"2025-10-27",
+  "status":"Hired",
+  "statusColor":"#12B76A",
+  "feedback":"Excellent fit — already started on Nov 2.",
+  "actions":["view","message","generateSlip"]
+}
+
+
+Actions icons: Eye, Message, Document+Plus — clickable; implement handlers:
+
+view opens modal with referral details,
+
+message opens quick feedback/request modal,
+
+generateSlip downloads PDF (generate simple PDF client-side with jsPDF or create printable HTML).
+
+Accessibility & behavior
+
+All interactive elements keyboard-focusable and labeled (aria-*)
+
+Color contrast must meet AA for primary text
+
+Sidebar: focus trap when collapsed; top nav: accessible search
+
+Table: sortable columns (at least Referral ID, Date Referred, Status)
+
+Mobile: sidebar collapses to top drawer; grid turns into single column with charts stacked
+
+Data binding & mock API rules (MANDATORY)
+
+All UI values must be read from the mock API endpoints:
+
+GET /api/summary
+
+GET /api/recent-activities
+
+GET /api/charts/bar
+
+GET /api/charts/doughnut
+
+GET /api/charts/line
+
+GET /api/referrals?limit=...&filters=...
+
+App should gracefully handle empty states and show skeletons while loading
+
+Provide a seed-data.json with the exact values above so the app looks identical on first load
+
+Provide README instructions for switching mock API to static build or remote API
+
+Pixel-perfect details (must be obeyed)
+
+Card border-radius 16px; all card paddings and line-heights must mimic reference
+
+Typography scale: Title 18–20px semibold; card numbers 28–36px bold; small captions 12–14px
+
+Use Tailwind utilities with custom tokens to reproduce spacing exactly
+
+Buttons/pills: exact colors and radii; Generate Report is green pill
+
+Shadows and subtle separators must match spec
+
+Code structure & deliverables
+
+/src
+
+/components (Sidebar, TopNav, SummaryCard, Charts, Table, Modals, Filters, Buttons)
+
+/api (mock client + types)
+
+/pages/Dashboard.tsx
+
+/styles (tailwind config + theme tokens)
+
+seed-data.json (above samples)
+
+README.md with run + build instructions and how to update seed data
+
+LICENSE (MIT)
+
+tests (optional): one integration test to assert summary values render from API
+
+Quality checks (CI dev checklist)
+
+On npm run dev, app boots at http://localhost:3000 and shows Dashboard Overview at 1920×1080 exactly like the spec.
+
+All summary cards populated from /api/summary.
+
+Doughnut shows exact 96.43% / 3.57% with counts 1271 / 47.
+
+Table contains sample row RFL-2025-0112 and action icons work.
+
+Charts use Chart.js and match seeded shapes/patterns.
+
+Responsive breakpoints: 1920, 1366, 1024, 768 — components collapse gracefully.
+
+Export to CSV produces a file with current filtered rows.
+
+Accessibility: aria labels present; keyboard navigation works.
+
+Extra developer notes (do this, do not ask)
+
+Make everything componentized and themeable (avoid magic numbers in CSS — use tokens).
+
+Provide hooks/useSummary.ts etc. for fetching and caching.
+
+Use react-query or equivalent to fetch and cache API responses for performance.
+
+Provide a single ThemeProvider so color tokens can be easily tuned.
+
+Provide a single constants/ui.ts storing the exact hex values and spacing used above.
+
+For Replit: include .replit and replit.nix if necessary to auto-run dev server.
+
+Copyable prompt to paste into Replit
+
+Build a React + TypeScript + Tailwind admin dashboard called GensanWorks that is pixel-perfect and data-driven. Follow the full spec below exactly: [paste the whole spec above — tokens, layout, colors, dataset seeds, endpoints, file structure, accessibility checklist, and deliverables]. Create a mock API (json-server / MSW) with seed-data.json containing the seed values shown. All cards, charts and the table must read from the mock API endpoints. Use Chart.js for charts and Lucide icons for minimal stroke icons. Ensure sidebar behavior, top nav, buttons, card radii (16px), shadows, fonts (Inter), exact colors, and the sample table row (RFL-2025-0112) appear. Include README with run instructions and tests. Output a ready-to-run Replit project.
