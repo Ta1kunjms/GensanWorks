@@ -69,6 +69,13 @@ interface MatchScore {
   strengths: string[];
   concerns: string[];
   recommendation: 'Highly Recommended' | 'Recommended' | 'Consider' | 'Not Suitable';
+  
+  // AI-generated insights
+  aiComment?: string;
+  whyQualified?: string;
+  hiringRecommendation?: string;
+  potentialRole?: string;
+  developmentAreas?: string[];
 }
 
 interface ApplicantDetails {
@@ -624,10 +631,20 @@ export default function JobMatchingPage() {
                                 {match.percentage}% Match
                               </span>
                             </div>
-                            {!isExpanded && match.strengths.length > 0 && (
-                              <p className="text-sm text-gray-600 mt-1">
-                                {match.strengths.slice(0, 2).join(' • ')}
-                              </p>
+                            {!isExpanded && (
+                              <div className="mt-1">
+                                {match.aiComment && (
+                                  <p className="text-sm text-purple-600 italic flex items-center gap-1">
+                                    <Sparkles className="h-3 w-3" />
+                                    {match.aiComment.slice(0, 100)}...
+                                  </p>
+                                )}
+                                {!match.aiComment && match.strengths.length > 0 && (
+                                  <p className="text-sm text-gray-600">
+                                    {match.strengths.slice(0, 2).join(' • ')}
+                                  </p>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
@@ -680,6 +697,28 @@ export default function JobMatchingPage() {
                                     ))}
                                   </div>
                                 </div>
+
+                                {/* AI Comment */}
+                                {match.aiComment && (
+                                  <div className="bg-purple-50 border border-purple-200 p-3 rounded-lg mb-3">
+                                    <p className="text-xs font-semibold text-purple-800 mb-2 flex items-center gap-1">
+                                      <Sparkles className="h-3 w-3" />
+                                      AI ANALYSIS
+                                    </p>
+                                    <p className="text-sm text-purple-700">{match.aiComment}</p>
+                                  </div>
+                                )}
+
+                                {/* Why Qualified */}
+                                {match.whyQualified && (
+                                  <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg mb-3">
+                                    <p className="text-xs font-semibold text-blue-800 mb-2 flex items-center gap-1">
+                                      <Award className="h-3 w-3" />
+                                      WHY QUALIFIED
+                                    </p>
+                                    <p className="text-sm text-blue-700">{match.whyQualified}</p>
+                                  </div>
+                                )}
 
                                 {/* Strengths */}
                                 {match.strengths.length > 0 && (
@@ -735,7 +774,7 @@ export default function JobMatchingPage() {
 
                                 {/* Missing Skills */}
                                 {match.missingSkills.length > 0 && (
-                                  <div className="bg-white p-3 rounded-lg">
+                                  <div className="bg-white p-3 rounded-lg mb-3">
                                     <p className="text-xs font-semibold text-orange-700 mb-2">
                                       ⚠ MISSING SKILLS ({match.missingSkills.length})
                                     </p>
@@ -746,6 +785,46 @@ export default function JobMatchingPage() {
                                         </Badge>
                                       ))}
                                     </div>
+                                  </div>
+                                )}
+
+                                {/* Hiring Recommendation */}
+                                {match.hiringRecommendation && (
+                                  <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-lg mb-3">
+                                    <p className="text-xs font-semibold text-indigo-800 mb-2 flex items-center gap-1">
+                                      <TrendingUp className="h-3 w-3" />
+                                      HIRING RECOMMENDATION
+                                    </p>
+                                    <p className="text-sm text-indigo-700">{match.hiringRecommendation}</p>
+                                  </div>
+                                )}
+
+                                {/* Potential Role */}
+                                {match.potentialRole && match.potentialRole !== job?.title && (
+                                  <div className="bg-cyan-50 border border-cyan-200 p-3 rounded-lg mb-3">
+                                    <p className="text-xs font-semibold text-cyan-800 mb-2 flex items-center gap-1">
+                                      <Briefcase className="h-3 w-3" />
+                                      ALTERNATIVE ROLE SUGGESTION
+                                    </p>
+                                    <p className="text-sm text-cyan-700">{match.potentialRole}</p>
+                                  </div>
+                                )}
+
+                                {/* Development Areas */}
+                                {match.developmentAreas && match.developmentAreas.length > 0 && (
+                                  <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg">
+                                    <p className="text-xs font-semibold text-amber-800 mb-2 flex items-center gap-1">
+                                      <TrendingUp className="h-3 w-3" />
+                                      DEVELOPMENT AREAS
+                                    </p>
+                                    <ul className="space-y-1">
+                                      {match.developmentAreas.map((area, idx) => (
+                                        <li key={idx} className="text-sm text-amber-700 flex items-start gap-2">
+                                          <span className="text-amber-500 mt-0.5">→</span>
+                                          <span>{area}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
                                   </div>
                                 )}
                               </div>

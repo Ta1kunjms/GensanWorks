@@ -681,8 +681,15 @@ export const jobseekerDashboardStatsSchema = z.object({
   recommendedJobs: z.array(jobPostSchema),
 });
 
+export const publicStatsSchema = z.object({
+  jobseekersRegistered: z.number(),
+  employersParticipating: z.number(),
+  jobsMatched: z.number(),
+});
+
 export type DashboardStats = z.infer<typeof dashboardStatsSchema>;
 export type EmployerDashboardStats = z.infer<typeof employerDashboardStatsSchema>;
 export type JobseekerDashboardStats = z.infer<typeof jobseekerDashboardStatsSchema>;
+export type PublicStats = z.infer<typeof publicStatsSchema>;
 
 

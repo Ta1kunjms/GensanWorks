@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Eye, Trash2, Search, Edit, FileText, UserPlus, CheckCircle, Filter, X } from 'lucide-react';
+import { Eye, Trash2, Search, Edit, FileText, UserPlus, CheckCircle, Filter, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { CreateAccountModal } from '@/components/create-account-modal';
 
 export default function AdminApplicantsPage() {
@@ -52,15 +52,24 @@ export default function AdminApplicantsPage() {
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedPeriod, setSelectedPeriod] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
+  
+  // Sorting states
+  const [sortBy, setSortBy] = useState<string>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     fetchApplicants();
-  }, []);
+  }, [sortBy, sortOrder]);
 
   const fetchApplicants = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/applicants');
+      // Build query params including sort parameters
+      const params = new URLSearchParams();
+      params.append('sortBy', sortBy);
+      params.append('sortOrder', sortOrder);
+      
+      const res = await fetch(`/api/applicants?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch applicants');
       const data = await res.json();
       setApplicants(data || []);
@@ -231,7 +240,7 @@ export default function AdminApplicantsPage() {
       });
     }
     
-    // Apply date period filter (registration date)
+    // Apply date period filter (registration date based on createdAt)
     if (selectedPeriod !== 'all') {
       const now = new Date();
       const cutoffDate = new Date();
@@ -252,7 +261,8 @@ export default function AdminApplicantsPage() {
       }
       
       filtered = filtered.filter(app => {
-        const regDate = app.registrationDate ? new Date(app.registrationDate) : null;
+        // Use createdAt as registration date
+        const regDate = app.createdAt ? new Date(app.createdAt) : null;
         return regDate && regDate >= cutoffDate;
       });
     }
@@ -291,6 +301,18 @@ export default function AdminApplicantsPage() {
 
   const isAllSelected = filteredApplicants.length > 0 && selectedIds.size === filteredApplicants.length;
   const isSomeSelected = selectedIds.size > 0 && selectedIds.size < filteredApplicants.length;
+  
+  // Handle sorting by column
+  const handleSort = (column: string) => {
+    if (sortBy === column) {
+      // Toggle sort order
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      // New column, default to descending (newest first)
+      setSortBy(column);
+      setSortOrder('desc');
+    }
+  };
 
   return (
     <div className="p-6">
@@ -458,7 +480,20 @@ export default function AdminApplicantsPage() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-900">Email</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-900">Contact</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-900">Account Status</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-900">Registration Date</th>
+                <th 
+                  className="px-4 py-3 text-left text-xs font-semibold text-slate-900 cursor-pointer hover:bg-slate-100 transition-colors select-none"
+                  onClick={() => handleSort('createdAt')}
+                  title="Click to sort by registration date"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Registration Date</span>
+                    {sortBy === 'createdAt' ? (
+                      sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />
+                    ) : (
+                      <ArrowUpDown className="w-3.5 h-3.5 opacity-40" />
+                    )}
+                  </div>
+                </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-900 w-40">Actions</th>
               </tr>
             </thead>

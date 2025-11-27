@@ -1,6 +1,8 @@
+import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { setupWebSocket } from "./websocket";
 
 const app = express();
 
@@ -89,5 +91,9 @@ app.use((req, res, next) => {
     host: "127.0.0.1",
   }, () => {
     log(`serving on port ${port}`);
+    
+    // Setup WebSocket server after HTTP server starts
+    // TEMPORARILY DISABLED TO FIX REFRESH ISSUE
+    // setupWebSocket(server);
   });
 })();

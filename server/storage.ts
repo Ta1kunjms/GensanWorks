@@ -387,20 +387,20 @@ export class DatabaseStorage implements IStorage {
 
       for (const applicant of applicants) {
         const barangay = applicant.barangay || 'Unknown';
-        const status = (applicant.employmentStatus || '').toLowerCase().trim();
+        const status = (applicant.employmentStatus || '').toLowerCase().trim().replace(/[-_]+/g, ' ');
 
         if (barangayEmployedCounts.has(barangay)) {
           // Match employment status with flexible matching for variations
-          if (status === 'employed' || status === 'wage employed') {
+          // Normalize: remove hyphens, underscores
+          if (status.includes('wage') && status.includes('employ')) {
             barangayEmployedCounts.set(barangay, (barangayEmployedCounts.get(barangay) || 0) + 1);
-          } else if (status === 'self-employed' || status === 'self_employed') {
+          } else if (status.includes('self') && status.includes('employ')) {
             barangaySelfEmployedCounts.set(barangay, (barangaySelfEmployedCounts.get(barangay) || 0) + 1);
-          } else if (status === 'unemployed' || status === 'underemployed') {
+          } else if (status.includes('unemployed') || status.includes('underemployed')) {
             barangayUnemployedCounts.set(barangay, (barangayUnemployedCounts.get(barangay) || 0) + 1);
-          } else if (status === 'new entrant/fresh graduate' || status === 'new entrant' || status === 'new_entrant' || status === 'fresh graduate') {
+          } else if (status.includes('new entrant') || status.includes('fresh graduate')) {
             barangayNewEntrantCounts.set(barangay, (barangayNewEntrantCounts.get(barangay) || 0) + 1);
           }
-          // Note: Other statuses like "Finished Contract", "Resigned", etc. are not counted
         }
       }
 

@@ -126,6 +126,11 @@ export function EditApplicantModal({
     handleInputChange("technicalTraining", newTraining);
   };
 
+  const handleLicenseRemove = (idx: number) => {
+    const newLicenses = formData.professionalLicenses?.filter((_: any, i: number) => i !== idx) || [];
+    handleInputChange("professionalLicenses", newLicenses);
+  };
+
   const handleSubmit = async () => {
     setLoading(true);
     try {
@@ -165,17 +170,16 @@ export function EditApplicantModal({
         </DialogHeader>
 
         <Tabs defaultValue="personal" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="grid w-full grid-cols-5 sticky top-0">
-            <TabsTrigger value="personal">Personal</TabsTrigger>
-            <TabsTrigger value="address">Address</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3 sticky top-0">
+            <TabsTrigger value="personal">Personal Info</TabsTrigger>
             <TabsTrigger value="employment">Employment</TabsTrigger>
-            <TabsTrigger value="education">Education</TabsTrigger>
-            <TabsTrigger value="experience">Experience</TabsTrigger>
+            <TabsTrigger value="skills">Skills & Education</TabsTrigger>
           </TabsList>
 
           <div className="p-4 overflow-y-auto flex-1 space-y-6">
-            {/* Personal Information Tab */}
+            {/* Personal Info Tab - combines Personal and Address */}
             <TabsContent value="personal" className="space-y-4">
+              <h4 className="font-semibold mb-3">I. PERSONAL INFORMATION</h4>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Surname *</Label>
@@ -318,10 +322,8 @@ export function EditApplicantModal({
                   />
                 </div>
               )}
-            </TabsContent>
 
-            {/* Address Tab */}
-            <TabsContent value="address" className="space-y-4">
+              <h4 className="font-semibold mb-3 mt-6">II. ADDRESS INFORMATION</h4>
               <div>
                 <Label>House/Street/Village *</Label>
                 <Input
@@ -465,10 +467,23 @@ export function EditApplicantModal({
               )}
             </TabsContent>
 
-            {/* Education Tab */}
-            <TabsContent value="education" className="space-y-4">
+            {/* Skills & Education Tab */}
+            <TabsContent value="skills" className="space-y-4">
               <div>
-                <h4 className="font-semibold mb-3">III. LANGUAGE PROFICIENCY</h4>
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="font-semibold">III. LANGUAGE PROFICIENCY</h4>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const newLang = [...(formData.languageProficiency || []), { language: "", read: false, write: false, speak: false, understand: false }];
+                      handleInputChange("languageProficiency", newLang);
+                    }}
+                  >
+                    Add Language
+                  </Button>
+                </div>
                 {(Array.isArray(formData.languageProficiency) ? formData.languageProficiency : []).map((lang: any, idx: number) => (
                   <div key={idx} className="border p-3 rounded mb-3 space-y-2">
                     <div className="flex justify-between items-center mb-2">
@@ -543,7 +558,20 @@ export function EditApplicantModal({
               </div>
 
               <div>
-                <h4 className="font-semibold mb-3">IV. EDUCATIONAL BACKGROUND</h4>
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="font-semibold">IV. EDUCATIONAL BACKGROUND</h4>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const newEdu = [...(formData.education || []), { level: "", course: "", schoolName: "", yearGraduated: "" }];
+                      handleInputChange("education", newEdu);
+                    }}
+                  >
+                    Add Education
+                  </Button>
+                </div>
                 {(Array.isArray(formData.education) ? formData.education : []).map((edu: any, idx: number) => (
                   <div key={idx} className="border p-3 rounded mb-3 space-y-2">
                     <div className="flex justify-between items-center mb-2">
@@ -607,7 +635,20 @@ export function EditApplicantModal({
               </div>
 
               <div>
-                <h4 className="font-semibold mb-3">V. TECHNICAL/VOCATIONAL TRAINING</h4>
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="font-semibold">V. TECHNICAL/VOCATIONAL TRAINING</h4>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const newTraining = [...(formData.technicalTraining || []), { course: "", hoursOfTraining: 0, trainingInstitution: "", skillsAcquired: "" }];
+                      handleInputChange("technicalTraining", newTraining);
+                    }}
+                  >
+                    Add Training
+                  </Button>
+                </div>
                 {(Array.isArray(formData.technicalTraining) ? formData.technicalTraining : []).map((training: any, idx: number) => (
                   <div key={idx} className="border p-3 rounded mb-3 space-y-2">
                     <div className="flex justify-between items-center mb-2">
@@ -662,12 +703,74 @@ export function EditApplicantModal({
                   </div>
                 ))}
               </div>
-            </TabsContent>
 
-            {/* Experience Tab */}
-            <TabsContent value="experience" className="space-y-4">
               <div>
-                <h4 className="font-semibold mb-3">VII. WORK EXPERIENCE (Last 10 years)</h4>
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="font-semibold">VI. PROFESSIONAL LICENSES AND CERTIFICATIONS</h4>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const newLicenses = [...(formData.professionalLicenses || []), { license: "", validUntil: "" }];
+                      handleInputChange("professionalLicenses", newLicenses);
+                    }}
+                  >
+                    Add License
+                  </Button>
+                </div>
+                {(Array.isArray(formData.professionalLicenses) ? formData.professionalLicenses : []).map((license: any, idx: number) => (
+                  <div key={idx} className="border p-3 rounded mb-3 space-y-2">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-semibold">License {idx + 1}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleLicenseRemove(idx)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <Input
+                      value={license.license || ""}
+                      onChange={(e) => {
+                        const newLicenses = [...(formData.professionalLicenses || [])];
+                        newLicenses[idx] = { ...license, license: e.target.value };
+                        handleInputChange("professionalLicenses", newLicenses);
+                      }}
+                      placeholder="License/Certificate Title"
+                    />
+                    <Input
+                      value={license.validUntil || ""}
+                      onChange={(e) => {
+                        const newLicenses = [...(formData.professionalLicenses || [])];
+                        newLicenses[idx] = { ...license, validUntil: e.target.value };
+                        handleInputChange("professionalLicenses", newLicenses);
+                      }}
+                      placeholder="Valid Until"
+                    />
+                  </div>
+                ))}
+              </div>
+
+
+              <div>
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="font-semibold">VII. WORK EXPERIENCE (Last 10 years)</h4>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const newExp = [...(formData.workExperience || []), { companyName: "", address: "", position: "", numberOfMonths: 0, status: "" }];
+                      handleInputChange("workExperience", newExp);
+                    }}
+                  >
+                    Add Experience
+                  </Button>
+                </div>
                 {(Array.isArray(formData.workExperience) ? formData.workExperience : []).map((exp: any, idx: number) => (
                   <div key={idx} className="border p-3 rounded mb-3 space-y-2">
                     <div className="flex justify-between items-center mb-2">
@@ -743,7 +846,7 @@ export function EditApplicantModal({
                 ))}
               </div>
 
-              <div>
+              <div className="border-t pt-6 mt-6">
                 <h4 className="font-semibold mb-3">VIII. OTHER SKILLS ACQUIRED WITHOUT CERTIFICATE</h4>
                 <div className="grid grid-cols-2 gap-3">
                   {otherSkillsOptions.map((skill) => (
@@ -756,6 +859,17 @@ export function EditApplicantModal({
                     </div>
                   ))}
                 </div>
+
+                {formData.otherSkills?.includes("Others") && (
+                  <div className="mt-3">
+                    <Label>Please specify other skills</Label>
+                    <Input
+                      value={formData.otherSkillsSpecify || ""}
+                      onChange={(e) => handleInputChange("otherSkillsSpecify", e.target.value)}
+                      placeholder="Specify other skills"
+                    />
+                  </div>
+                )}
               </div>
             </TabsContent>
           </div>
