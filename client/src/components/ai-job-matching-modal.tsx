@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, TrendingUp, AlertCircle, CheckCircle2, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Sparkles, TrendingUp, AlertCircle, CheckCircle2, X, ChevronDown, ChevronUp, Briefcase } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { authFetch } from "@/lib/auth";
 import { ViewApplicantModal } from "@/components/view-applicant-modal";
@@ -26,6 +26,12 @@ interface MatchScore {
   strengths: string[];
   concerns: string[];
   recommendation: 'Highly Recommended' | 'Recommended' | 'Consider' | 'Not Suitable';
+  // AI-generated insight fields (optional)
+  aiComment?: string;
+  whyQualified?: string;
+  hiringRecommendation?: string;
+  potentialRole?: string;
+  developmentAreas?: string[];
 }
 
 interface AIMatchResult {
@@ -52,6 +58,7 @@ export function AIJobMatchingModal({ jobId, jobTitle, onClose }: AIJobMatchingMo
   const [minScore, setMinScore] = useState(50);
   const [selectedApplicant, setSelectedApplicant] = useState<any>(null);
   const [viewApplicantModalOpen, setViewApplicantModalOpen] = useState(false);
+  const [aiExpanded, setAiExpanded] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -319,6 +326,70 @@ export function AIJobMatchingModal({ jobId, jobTitle, onClose }: AIJobMatchingMo
                                   <li key={idx}>{concern}</li>
                                 ))}
                               </ul>
+                            </div>
+                          )}
+
+                          {/* Toggle AI Assessment */}
+                          <div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setAiExpanded(prev => ({ ...prev, [match.applicantId]: !prev[match.applicantId] }))}
+                            >
+                              {aiExpanded[match.applicantId] ? (
+                                <span className="flex items-center gap-1"><ChevronUp className="h-4 w-4" /> Hide AI Assessment</span>
+                              ) : (
+                                <span className="flex items-center gap-1"><ChevronDown className="h-4 w-4" /> Show AI Assessment</span>
+                              )}
+                            </Button>
+                          </div>
+
+                          {aiExpanded[match.applicantId] && (
+                            <div className="space-y-3">
+                              {match.aiComment && (
+                                <div className="bg-purple-50 border border-purple-200 p-3 rounded-lg">
+                                  <p className="text-xs font-semibold text-purple-800 mb-1 flex items-center gap-1">
+                                    <Sparkles className="h-3 w-3" /> AI ANALYSIS
+                                  </p>
+                                  <p className="text-sm text-purple-700">{match.aiComment}</p>
+                                </div>
+                              )}
+                              {match.whyQualified && (
+                                <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
+                                  <p className="text-xs font-semibold text-blue-800 mb-1 flex items-center gap-1">
+                                    <CheckCircle2 className="h-3 w-3" /> WHY QUALIFIED
+                                  </p>
+                                  <p className="text-sm text-blue-700">{match.whyQualified}</p>
+                                </div>
+                              )}
+                              {match.hiringRecommendation && (
+                                <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-lg">
+                                  <p className="text-xs font-semibold text-indigo-800 mb-1 flex items-center gap-1">
+                                    <TrendingUp className="h-3 w-3" /> HIRING RECOMMENDATION
+                                  </p>
+                                  <p className="text-sm text-indigo-700">{match.hiringRecommendation}</p>
+                                </div>
+                              )}
+                              {match.potentialRole && match.potentialRole !== jobTitle && (
+                                <div className="bg-cyan-50 border border-cyan-200 p-3 rounded-lg">
+                                  <p className="text-xs font-semibold text-cyan-800 mb-1 flex items-center gap-1">
+                                    <Briefcase className="h-3 w-3" /> ALTERNATIVE ROLE SUGGESTION
+                                  </p>
+                                  <p className="text-sm text-cyan-700">{match.potentialRole}</p>
+                                </div>
+                              )}
+                              {match.developmentAreas && match.developmentAreas.length > 0 && (
+                                <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg">
+                                  <p className="text-xs font-semibold text-amber-800 mb-1 flex items-center gap-1">
+                                    <TrendingUp className="h-3 w-3" /> DEVELOPMENT AREAS
+                                  </p>
+                                  <ul className="list-disc list-inside text-sm text-amber-700 space-y-1">
+                                    {match.developmentAreas.map((area, idx) => (
+                                      <li key={idx}>{area}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>

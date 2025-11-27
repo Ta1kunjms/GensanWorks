@@ -124,6 +124,17 @@ export default function JobMatchingPage() {
   const [minScore, setMinScore] = useState(50);
   const [searchQuery, setSearchQuery] = useState("");
   const { toast } = useToast();
+  const [refreshingInsights, setRefreshingInsights] = useState<Record<string, boolean>>({});
+  const [weights, setWeights] = useState({
+    skillsMatch: 50,
+    educationMatch: 15,
+    experienceMatch: 15,
+    locationMatch: 10,
+    availabilityMatch: 5,
+    salaryMatch: 3,
+    demographicMatch: 2,
+  });
+  const totalWeight = Object.values(weights).reduce((a,b)=>a+b,0);
 
   useEffect(() => {
     if (jobId) {
@@ -186,7 +197,7 @@ export default function JobMatchingPage() {
     try {
       setMatching(true);
       // Removed hardcoded maxResults=100 to allow unlimited qualified applicants
-      const response = await authFetch(`/api/jobs/${jobId}/match?minScore=${minScore}`);
+      const response = await authFetch(`/api/jobs/${jobId}/match?minScore=${minScore}&weights=${encodeURIComponent(JSON.stringify(weights))}`);
 
       if (!response.ok) {
         throw new Error('Failed to run matching');
@@ -234,6 +245,36 @@ export default function JobMatchingPage() {
         description: "Failed to load applicant details",
         variant: "destructive",
       });
+    }
+  };
+
+  const refreshAiInsights = async (applicantId: string) => {
+    if (!jobId) return;
+    try {
+      setRefreshingInsights(prev => ({ ...prev, [applicantId]: true }));
+      const response = await authFetch(`/api/jobs/${jobId}/applicant/${applicantId}/ai-insights`);
+      if (!response.ok) throw new Error('Failed to refresh AI insights');
+      const data = await response.json();
+
+      setMatches(prev => prev.map(m => (
+        m.applicantId === applicantId
+          ? {
+              ...m,
+              aiComment: data.aiComment ?? m.aiComment,
+              whyQualified: data.whyQualified ?? m.whyQualified,
+              hiringRecommendation: data.hiringRecommendation ?? m.hiringRecommendation,
+              potentialRole: data.potentialRole ?? m.potentialRole,
+              developmentAreas: data.developmentAreas ?? m.developmentAreas,
+            }
+          : m
+      )));
+
+      toast({ title: 'AI analysis refreshed', description: 'Latest insights fetched for this applicant.' });
+    } catch (error) {
+      console.error('Error refreshing AI insights:', error);
+      toast({ title: 'Error', description: 'Failed to refresh AI insights', variant: 'destructive' });
+    } finally {
+      setRefreshingInsights(prev => ({ ...prev, [applicantId]: false }));
     }
   };
 
@@ -547,6 +588,36 @@ export default function JobMatchingPage() {
             )}
           </div>
         </CardHeader>
+        {/* Weight Sliders */}
+        <CardContent className="pt-0">
+          <div className="mt-4">
+            <h3 className="text-sm font-semibold mb-2 flex items-center gap-2"><Sparkles className="h-4 w-4 text-purple-500" /> Custom Match Weights</h3>
+            <p className="text-xs text-gray-500 mb-4">Adjust importance (raw total {totalWeight}; normalized internally to 100).</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              {Object.entries(weights).map(([key, value]) => (
+                <div key={key} className="bg-white border rounded p-3 flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-medium capitalize">{key.replace(/([A-Z])/g,' $1').trim()}</span>
+                    <span className="text-xs text-gray-600">{value}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={value}
+                    onChange={(e) => setWeights(w => ({ ...w, [key]: Number(e.target.value) }))}
+                    className="w-full"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-end mt-3">
+              <Button size="sm" variant="outline" onClick={runMatching} disabled={matching}>Re-Score</Button>
+            </div>
+            <Separator className="my-6" />
+          </div>
+        </CardContent>
 
         {hasMatched && (
           <CardContent>
@@ -701,10 +772,21 @@ export default function JobMatchingPage() {
                                 {/* AI Comment */}
                                 {match.aiComment && (
                                   <div className="bg-purple-50 border border-purple-200 p-3 rounded-lg mb-3">
-                                    <p className="text-xs font-semibold text-purple-800 mb-2 flex items-center gap-1">
-                                      <Sparkles className="h-3 w-3" />
-                                      AI ANALYSIS
-                                    </p>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <p className="text-xs font-semibold text-purple-800 flex items-center gap-1">
+                                        <Sparkles className="h-3 w-3" />
+                                        AI ANALYSIS
+                                      </p>
+                                      <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() => refreshAiInsights(match.applicantId)}
+                                        disabled={!!refreshingInsights[match.applicantId]}
+                                        className="h-6 px-2 text-xs"
+                                      >
+                                        {refreshingInsights[match.applicantId] ? 'Refreshing…' : 'Refresh AI'}
+                                      </Button>
+                                    </div>
                                     <p className="text-sm text-purple-700">{match.aiComment}</p>
                                   </div>
                                 )}

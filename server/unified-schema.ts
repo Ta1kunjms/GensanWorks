@@ -42,6 +42,32 @@ const isDev = process.env.NODE_ENV === "development";
 const isSqlite = !process.env.DATABASE_URL?.startsWith("postgresql://");
 
 // ============================================================================
+// NOTIFICATIONS TABLE - System/user notifications
+// ============================================================================
+export const notificationsTable = isSqlite ?
+  sqliteTable("notifications", {
+    id: sqliteText("id").primaryKey().$defaultFn(() => `notif_${Date.now()}_${Math.random().toString(36).slice(2,8)}`),
+    userId: sqliteText("user_id"), // optional direct user target
+    role: sqliteText("role"), // admin | employer | jobseeker | freelancer
+    type: sqliteText("type"), // system | job | application | message
+    message: sqliteText("message").notNull(),
+    read: sqliteInteger("read", { mode: "boolean" }).default(false),
+    createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+    updatedAt: sqliteInteger("updated_at", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  })
+:
+  pgTable("notifications", {
+    id: text("id").primaryKey().$defaultFn(() => `notif_${Date.now()}_${Math.random().toString(36).slice(2,8)}`),
+    userId: text("user_id"),
+    role: text("role"),
+    type: text("type"),
+    message: text("message").notNull(),
+    read: boolean("read").default(false),
+    createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+    updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  });
+
+// ============================================================================
 // ADMINS TABLE - Admin users
 // ============================================================================
 export const adminsTable = isSqlite ? 

@@ -34,7 +34,7 @@ import {
 } from "@shared/schema";
 import { ZodError } from "zod";
 import { initializeDatabase, getDatabase } from "./database";
-import { applicantsTable, employersTable, jobVacanciesTable, jobsTable, applicationsTable, adminsTable, referralsTable, messagesTable } from "./unified-schema";
+import { applicantsTable, employersTable, jobVacanciesTable, jobsTable, applicationsTable, adminsTable, referralsTable, messagesTable, notificationsTable } from "./unified-schema";
 import { computeProfileCompleteness } from "./utils/status";
 
 // ============ HELPER FUNCTIONS ============
@@ -346,6 +346,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(activities);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch recent activities" });
+    }
+  });
+
+  // ================= NOTIFICATIONS + SSE =================
+  const sseClients: Response[] = [];
+
+  function broadcastNotification(event: string, payload: any) {
+    const data = JSON.stringify(payload);
+    sseClients.forEach((res) => {
+      try {
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${data}\n\n`);
+      } catch {}
+    });
+  }
+
+  // SSE stream
+  app.get('/api/notifications/stream', authMiddleware, (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+    res.write('retry: 10000\n\n');
+    sseClients.push(res);
+    req.on('close', () => {
+      const idx = sseClients.indexOf(res);
+      if (idx >= 0) sseClients.splice(idx, 1);
+    });
+  });
+
+  // GET notifications from DB
+  app.get('/api/notifications', authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const db = getDatabase();
+      const user = (req as any).user;
+      const role = user?.role;
+      const userId = user?.id;
+
+      // Fetch notifications targeted to this user or role (or global role=null/userId=null)
+      const rows = await db.select().from(notificationsTable);
+      const filtered = rows.filter((n: any) => {
+        if (n.userId && userId && n.userId === userId) return true;
+        if (n.role && role && n.role === role) return true;
+        if (!n.userId && !n.role) return true; // global broadcast
+        return false;
+      }).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      // Seed sample if empty
+      if (filtered.length === 0) {
+        const seed = [
+          { id: `seed_${Date.now()}_1`, userId: null, role, type: 'system', message: 'Welcome! Notifications are now live.', read: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        ];
+        for (const s of seed) {
+          await db.insert(notificationsTable).values(s as any);
+        }
+        broadcastNotification('seed', seed);
+        return res.json(seed);
+      }
+
+      res.json(filtered);
+    } catch (e) {
+      console.error('Failed fetching notifications', e);
+      res.status(500).json({ error: 'Failed to fetch notifications' });
+    }
+  });
+
+  // POST create notification (admin only for now)
+  app.post('/api/notifications', authMiddleware, adminOnly, async (req: Request, res: Response) => {
+    try {
+      const db = getDatabase();
+      const { role, userId, type, message } = req.body;
+      if (!message) return res.status(400).json({ error: 'Message required' });
+      const now = new Date().toISOString();
+      const notif = { id: `notif_${Date.now()}_${Math.random().toString(36).slice(2,8)}`, role: role || null, userId: userId || null, type: type || 'system', message, read: false, createdAt: now, updatedAt: now };
+      await db.insert(notificationsTable).values(notif as any);
+      broadcastNotification('new', notif);
+      res.status(201).json(notif);
+    } catch (e) {
+      console.error('Failed creating notification', e);
+      res.status(500).json({ error: 'Failed to create notification' });
+    }
+  });
+
+  // PATCH mark as read
+  app.patch('/api/notifications/:id/read', authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const db = getDatabase();
+      const id = req.params.id;
+      // naive update using raw sql since drizzle instance details may vary
+      await db.execute(sql`UPDATE notifications SET read = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ${id}`);
+      broadcastNotification('read', { id });
+      res.json({ id, read: true });
+    } catch (e) {
+      console.error('Failed marking notification read', e);
+      res.status(500).json({ error: 'Failed to mark notification read' });
     }
   });
 
@@ -1728,10 +1823,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const useAI = applicants.length <= 100; // AI for up to 100 applicants
       
       const startTime = Date.now();
+      // Parse optional custom weights from query (?weights=%7B"skillsMatch":60,...%7D or CSV skillsMatch:60,educationMatch:10,...)
+      let customWeights: any = undefined;
+      if (req.query.weights) {
+        try {
+          const raw = req.query.weights as string;
+          if (raw.trim().startsWith('{')) {
+            customWeights = JSON.parse(raw);
+          } else {
+            customWeights = raw.split(',').reduce((acc, pair) => {
+              const [k, v] = pair.split(':');
+              if (k && v && !isNaN(Number(v))) acc[k.trim()] = Number(v);
+              return acc;
+            }, {} as Record<string, number>);
+          }
+        } catch (e) {
+          console.warn('[AI Matching] Invalid weights parameter, ignoring:', req.query.weights);
+          customWeights = undefined;
+        }
+      }
+
       const matches = await aiJobMatcher.matchApplicantsToJob(
         applicants as any,
         job as any,
-        { minScore, maxResults, useAI }
+        { minScore, maxResults, useAI: customWeights ? false : useAI, weights: customWeights }
       );
       const duration = Date.now() - startTime;
 
@@ -1759,6 +1874,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         criteria: {
           minScore,
           maxResults,
+          weights: customWeights || null,
         },
       });
     } catch (error) {

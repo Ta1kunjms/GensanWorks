@@ -29,6 +29,18 @@ export const recentActivitySchema = z.object({
 
 export type RecentActivity = z.infer<typeof recentActivitySchema>;
 
+// Notifications Schema
+export const notificationSchema = z.object({
+  id: z.string(),
+  type: z.enum(["system", "job", "application", "message"]),
+  message: z.string(),
+  createdAt: z.string(),
+  read: z.boolean().optional().default(false),
+});
+
+export const notificationsResponseSchema = z.array(notificationSchema);
+export type Notification = z.infer<typeof notificationSchema>;
+
 // Chart Data Schemas
 export const barChartDataSchema = z.object({
   barangays: z.array(z.string()),

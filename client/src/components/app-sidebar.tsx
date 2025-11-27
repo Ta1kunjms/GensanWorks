@@ -49,9 +49,7 @@ const jobseekerMenu = [
   { title: "Profile", url: "/jobseeker/profile", icon: User, testId: "nav-jobseeker-profile" },
 ];
 
-const bottomMenuItems = [
-  { title: "Logout", url: "/logout", icon: LogOut, testId: "nav-logout" },
-];
+// Removed bottomMenuItems (Logout)
 
 export function AppSidebar() {
   const [location, setLocation] = useLocation();
@@ -119,36 +117,23 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <Separator className="bg-sidebar-border" />
-
-        <SidebarGroup className="mt-auto py-6">
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {bottomMenuItems.map((item) => {
-                const isActive = location === item.url;
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={isActive} data-testid={item.testId} className="h-11">
-                      {item.url === '/logout' ? (
-                        <button
-                          onClick={() => setShowLogoutConfirm(true)}
-                        >
-                          <item.icon className="w-5 h-5" />
-                          <span className="text-[15px]">{item.title}</span>
-                        </button>
-                      ) : (
-                        <Link href={item.url}>
-                          <item.icon className="w-5 h-5" />
-                          <span className="text-[15px]">{item.title}</span>
-                        </Link>
-                      )}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {/* Admin-only logout group */}
+        {role === 'admin' && (
+          <SidebarGroup className="mt-auto py-2">
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem key="logout">
+                  <SidebarMenuButton asChild className="h-11" data-testid="nav-logout">
+                    <button onClick={() => setShowLogoutConfirm(true)} className="flex items-center gap-2">
+                      <LogOut className="w-5 h-5" />
+                      <span className="text-[15px]">Logout</span>
+                    </button>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-4 group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:items-start group-data-[collapsible=icon]:p-2">
