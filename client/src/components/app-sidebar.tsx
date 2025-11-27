@@ -1,4 +1,4 @@
-import { Home, Users, Briefcase, FileText, BarChart3, LogOut, User, ClipboardList, Settings, HelpCircle, Wand2 } from "lucide-react";
+import { Home, Users, Briefcase, FileText, BarChart3, LogOut, User, ClipboardList, Settings, HelpCircle, Wand2, MessageCircle } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useToast } from '@/hooks/use-toast';
 import { useEffect, useState } from "react";
@@ -36,6 +36,7 @@ const employerMenu = [
   { title: "Dashboard", url: "/employer/dashboard", icon: Home, testId: "nav-employer-dashboard" },
   { title: "Jobs", url: "/employer/jobs", icon: ClipboardList, testId: "nav-employer-jobs" },
   { title: "Applications", url: "/employer/applications", icon: Users, testId: "nav-employer-applications" },
+  { title: "Messages", url: "/employer/messages", icon: MessageCircle, testId: "nav-employer-messages" },
   { title: "Profile", url: "/employer/profile", icon: User, testId: "nav-employer-profile" },
 ];
 
@@ -44,6 +45,7 @@ const jobseekerMenu = [
   { title: "Dashboard", url: "/jobseeker/dashboard", icon: Home, testId: "nav-jobseeker-dashboard" },
   { title: "Find Jobs", url: "/jobseeker/jobs", icon: Briefcase, testId: "nav-jobseeker-jobs" },
   { title: "Applications", url: "/jobseeker/applications", icon: ClipboardList, testId: "nav-jobseeker-applications" },
+  { title: "Messages", url: "/jobseeker/messages", icon: MessageCircle, testId: "nav-jobseeker-messages" },
   { title: "Profile", url: "/jobseeker/profile", icon: User, testId: "nav-jobseeker-profile" },
 ];
 

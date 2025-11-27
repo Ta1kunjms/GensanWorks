@@ -10,18 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Wand2, Briefcase, MapPin, DollarSign, Calendar } from "lucide-react";
+import { Search, Wand2, Briefcase, DollarSign, Calendar } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AIJobMatchingModal } from "@/components/ai-job-matching-modal";
 
 type AdminJobVacancy = BaseJobVacancy & {
-  workLocation?: string;
-  salaryFrom?: number;
-  salaryTo?: number;
-  numberOfVacancies?: number; // alias of vacantPositions if present
-  occupationCategory?: string;
-  workDescription?: string;
-  employmentType?: string;
+  vacantPositions?: number;
+  startingSalaryOrWage?: number;
   archived?: boolean;
 };
 
@@ -75,7 +70,6 @@ export default function AdminMatchingPage() {
   const filteredJobs = jobs.filter(job => 
     job.positionTitle?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     job.establishmentName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    job.workLocation?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     job.mainSkillOrSpecialization?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -160,7 +154,7 @@ export default function AdminMatchingPage() {
                       {job.positionTitle}
                     </h3>
                     <Badge variant="default" className="ml-2 shrink-0">
-                      {job.numberOfVacancies || 0} slots
+                      {job.vacantPositions || 0} slots
                     </Badge>
                   </div>
                   <p className="text-sm text-slate-600 font-medium line-clamp-1">
@@ -170,29 +164,18 @@ export default function AdminMatchingPage() {
 
                 {/* Body */}
                 <div className="p-4">
-                  {/* Location & Salary */}
-                  <div className="grid grid-cols-2 gap-3 mb-3 pb-3 border-b border-slate-200">
-                    <div>
-                      <p className="text-slate-600 font-medium mb-1 flex items-center gap-1">
-                        <MapPin className="h-3 w-3" />
-                        Location
-                      </p>
-                      <p className="text-xs text-slate-900 line-clamp-1">
-                        {job.workLocation || "Not specified"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-slate-600 font-medium mb-1 flex items-center gap-1">
-                        <DollarSign className="h-3 w-3" />
-                        Salary
-                      </p>
-                      <p className="text-xs font-semibold text-slate-900">
-                        {job.salaryFrom && job.salaryTo 
-                          ? `₱${job.salaryFrom.toLocaleString()} - ₱${job.salaryTo.toLocaleString()}`
-                          : "Not specified"
-                        }
-                      </p>
-                    </div>
+                  {/* Salary */}
+                  <div className="mb-3 pb-3 border-b border-slate-200">
+                    <p className="text-slate-600 font-medium mb-1 flex items-center gap-1">
+                      <DollarSign className="h-3 w-3" />
+                      Starting Salary
+                    </p>
+                    <p className="text-xs font-semibold text-slate-900">
+                      {job.startingSalaryOrWage 
+                        ? `₱${job.startingSalaryOrWage.toLocaleString()}`
+                        : "Not specified"
+                      }
+                    </p>
                   </div>
 
                   {/* Skills */}

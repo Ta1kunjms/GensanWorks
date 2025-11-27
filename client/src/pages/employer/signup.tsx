@@ -42,7 +42,8 @@ export default function EmployerSignup() {
 
     try {
       await signup(
-        formData.companyName,
+        formData.companyName, // firstName (will be used as name)
+        "", // lastName (empty for employer)
         formData.email,
         formData.password,
         "employer",

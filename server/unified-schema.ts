@@ -495,6 +495,40 @@ export type Session = typeof sessionsTable.$inferSelect;
 // Note: User types removed - jobseekers are now stored in applicantsTable
 
 // ============================================================================
+// MESSAGES TABLE - Communication between employers and applicants
+// ============================================================================
+export const messagesTable = isSqlite ?
+  sqliteTable("messages", {
+    id: sqliteText("id").primaryKey().$defaultFn(() => `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`),
+    senderId: sqliteText("sender_id").notNull(),
+    senderRole: sqliteText("sender_role", { enum: ["employer", "jobseeker", "freelancer"] }).notNull(),
+    receiverId: sqliteText("receiver_id").notNull(),
+    receiverRole: sqliteText("receiver_role", { enum: ["employer", "jobseeker", "freelancer"] }).notNull(),
+    subject: sqliteText("subject"),
+    content: sqliteText("content").notNull(),
+    isRead: sqliteInteger("is_read", { mode: "boolean" }).default(false).notNull(),
+    createdAt: sqliteInteger("created_at", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+    updatedAt: sqliteInteger("updated_at", { mode: "timestamp" }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+  })
+:
+  pgTable("messages", {
+    id: text("id").primaryKey().$defaultFn(() => `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`),
+    senderId: text("sender_id").notNull(),
+    senderRole: text("sender_role", { enum: ["employer", "jobseeker", "freelancer"] }).notNull(),
+    receiverId: text("receiver_id").notNull(),
+    receiverRole: text("receiver_role", { enum: ["employer", "jobseeker", "freelancer"] }).notNull(),
+    subject: text("subject"),
+    content: text("content").notNull(),
+    isRead: boolean("is_read").default(false).notNull(),
+    createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+    updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  });
+
+// Messages types
+export type Message = typeof messagesTable.$inferSelect;
+export type MessageInsert = typeof messagesTable.$inferInsert;
+
+// ============================================================================
 // EXPORT ALL TABLES FOR DIRECT USE
 // ============================================================================
 
@@ -508,6 +542,7 @@ export const tables = {
   jobs: jobsTable,
   applications: applicationsTable,
   sessions: sessionsTable,
+  messages: messagesTable,
 } as const;
 
 export const isSqliteDB = isSqlite;
