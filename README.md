@@ -364,7 +364,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 For questions, issues, or suggestions:
 
-- 📧 Email: support@gensanworks.com
+- 📧 Email: tycoonjamesflores@gmail.com
 - 🐛 Issues: [GitHub Issues](https://github.com/Ta1kunjms/GensanWorks/issues)
 - 📖 Documentation: [DOCUMENTATION.md](DOCUMENTATION.md)
 
