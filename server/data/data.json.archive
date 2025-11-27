@@ -1,0 +1,51 @@
+{
+  "admins": [
+    {
+      "id": "ADM-1763918291614",
+      "name": "Administrator",
+      "email": "admin@local.test",
+      "password": "$2a$08$Gy3vgUATHKk7KgWLjBVTreFI/yOBJk5g5Wk026d4.ZR0A/7KB/qpi",
+      "role": "admin",
+      "createdAt": "2025-11-23T17:18:11.639Z"
+    }
+  ],
+  "jobseekers": [],
+  "employers": [],
+  "jobs": [
+    {
+      "id": "JOB-1763977164896",
+      "title": "Graphic Designer",
+      "description": "Make a Branding",
+      "location": "General Santos City",
+      "salaryMin": 10000,
+      "salaryMax": 30000,
+      "salaryPeriod": "monthly",
+      "salaryAmount": 0,
+      "status": "active",
+      "employerId": "employer_1763906680886",
+      "salaryType": "Monthly",
+      "jobStatus": "Contractual",
+      "minimumEducation": "No specific requirement",
+      "yearsOfExperience": 5,
+      "skills": "",
+      "createdAt": "2025-11-24T09:39:24.896Z",
+      "updatedAt": "2025-11-24T09:39:24.896Z"
+    }
+  ],
+  "applications": [],
+  "notes": [],
+  "applicants": [],
+  "jobVacancies": [],
+  "adminAccessRequests": [
+    {
+      "id": "REQ-1763918358704",
+      "name": "Tycoon James Flores",
+      "email": "admin@rights.com",
+      "phone": "09123456789",
+      "organization": "PESO - Admin",
+      "status": "approved",
+      "createdAt": "2025-11-23T17:19:18.705Z",
+      "updatedAt": "2025-11-23T17:35:34.654Z"
+    }
+  ]
+}

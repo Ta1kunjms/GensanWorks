@@ -16,6 +16,16 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: false }));
 
+// Disable caching for API routes
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api")) {
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.set("Pragma", "no-cache");
+    res.set("Expires", "0");
+  }
+  next();
+});
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -52,9 +62,12 @@ app.use((req, res, next) => {
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
-
+    // Respond with the error JSON but do NOT throw to avoid crashing the dev server
+    // In development we log the stack for visibility.
     res.status(status).json({ message });
-    throw err;
+    if (process.env.NODE_ENV === "development") {
+      console.error("Express error handler caught:", err);
+    }
   });
 
   // importantly only setup vite in development and after
@@ -73,8 +86,7 @@ app.use((req, res, next) => {
   const port = parseInt(process.env.PORT || '5000', 10);
   server.listen({
     port,
-    host: "0.0.0.0",
-    reusePort: true,
+    host: "127.0.0.1",
   }, () => {
     log(`serving on port ${port}`);
   });
