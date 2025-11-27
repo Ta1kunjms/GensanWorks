@@ -20,8 +20,12 @@ interface SummaryCardProps {
 
 export function SummaryCard({ title, data, testId }: SummaryCardProps) {
   const isPositive = data.trend === "up";
-  const trendColor = isPositive ? "text-success" : "text-destructive";
+  const isZero = data.value === 0;
+  
+  // Gray color for zero values, otherwise use trend colors
+  const trendColor = isZero ? "text-gray-500" : isPositive ? "text-success" : "text-destructive";
   const TrendIcon = isPositive ? TrendingUp : TrendingDown;
+  const cardBgClass = isZero ? "bg-gray-50" : "";
 
   // Use actual historical data from backend
   const sparklineData = data.history || [];
@@ -31,7 +35,7 @@ export function SummaryCard({ title, data, testId }: SummaryCardProps) {
     datasets: [
       {
         data: sparklineData,
-        borderColor: isPositive ? "hsl(151 55% 42%)" : "hsl(4 90% 58%)",
+        borderColor: isZero ? "hsl(0 0% 60%)" : isPositive ? "hsl(151 55% 42%)" : "hsl(4 90% 58%)",
         borderWidth: 2,
         pointRadius: 0,
         tension: 0.4,
@@ -54,16 +58,16 @@ export function SummaryCard({ title, data, testId }: SummaryCardProps) {
   };
 
   return (
-    <Card className="overflow-hidden" data-testid={testId}>
+    <Card className={`overflow-hidden ${cardBgClass}`} data-testid={testId}>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
+        <CardTitle className={`text-sm font-medium ${isZero ? "text-gray-600" : "text-muted-foreground"}`}>
           {title}
         </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="flex flex-col gap-3">
           <div className="flex items-end justify-between gap-4">
-            <div className="text-3xl font-bold text-foreground" data-testid={`${testId}-value`}>
+            <div className={`text-3xl font-bold ${isZero ? "text-gray-600" : "text-foreground"}`} data-testid={`${testId}-value`}>
               {data.value.toLocaleString()}
             </div>
             {sparklineData.length > 0 && (
@@ -74,10 +78,10 @@ export function SummaryCard({ title, data, testId }: SummaryCardProps) {
           </div>
           <div className="flex items-center gap-1.5">
             <div className={`flex items-center gap-1 text-sm font-medium ${trendColor}`}>
-              <TrendIcon className="h-4 w-4" />
-              <span data-testid={`${testId}-change`}>{Math.abs(data.change)}%</span>
+              {!isZero && <TrendIcon className="h-4 w-4" />}
+              <span data-testid={`${testId}-change`}>{isZero ? "—" : `${Math.abs(data.change)}%`}</span>
             </div>
-            <span className="text-xs text-muted-foreground">from last month</span>
+            <span className={`text-xs ${isZero ? "text-gray-500" : "text-muted-foreground"}`}>from last month</span>
           </div>
         </div>
       </CardContent>

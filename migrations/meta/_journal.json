@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1763882962694,
+      "tag": "0000_careful_ozymandias",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1763894954058,
+      "tag": "0001_striped_inertia",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1732448400000,
+      "tag": "0002_fix_applicant_dates",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1732448400100,
+      "tag": "0003_add_salary_period",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1763898100000,
+      "tag": "0004_add_referral_slip_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1763944800000,
+      "tag": "0005_add_jobs_archived",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1764000000000,
+      "tag": "0006_add_job_vacancies_archived",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1764100000000,
+      "tag": "0007_fix_schema",
+      "breakpoints": true
+    }
+  ]
+}

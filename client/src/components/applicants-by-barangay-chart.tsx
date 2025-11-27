@@ -18,19 +18,45 @@ interface ApplicantsByBarangayChartProps {
 }
 
 export function ApplicantsByBarangayChart({ data }: ApplicantsByBarangayChartProps) {
+  // Calculate the maximum value across all datasets
+  const maxValue = Math.max(
+    ...data.employed,
+    ...data.unemployed,
+    ...data.selfEmployed,
+    ...data.newEntrant
+  );
+  
+  // Set y-axis max to 120% of the highest value (adds 20% buffer)
+  // Round up to nearest multiple of 5 for cleaner scale
+  const yAxisMax = Math.ceil((maxValue * 1.2) / 5) * 5;
+
   const chartData = {
     labels: data.barangays,
     datasets: [
       {
-        label: "Job Seeker",
-        data: data.jobSeeker,
-        backgroundColor: "hsl(220 40% 7%)",
+        label: "Employed",
+        data: data.employed,
+        backgroundColor: "hsl(142 76% 36%)",
         borderRadius: 4,
         maxBarThickness: 20,
       },
       {
-        label: "Freelancer",
-        data: data.freelancer,
+        label: "Unemployed",
+        data: data.unemployed,
+        backgroundColor: "hsl(0 84% 60%)",
+        borderRadius: 4,
+        maxBarThickness: 20,
+      },
+      {
+        label: "Self-Employed",
+        data: data.selfEmployed,
+        backgroundColor: "hsl(38 92% 50%)",
+        borderRadius: 4,
+        maxBarThickness: 20,
+      },
+      {
+        label: "New Entrant",
+        data: data.newEntrant,
         backgroundColor: "hsl(215 92% 58%)",
         borderRadius: 4,
         maxBarThickness: 20,
@@ -73,7 +99,7 @@ export function ApplicantsByBarangayChart({ data }: ApplicantsByBarangayChartPro
       },
       y: {
         beginAtZero: true,
-        max: 100,
+        max: yAxisMax,
         grid: {
           color: "hsl(215 20% 90%)",
         },
@@ -90,7 +116,7 @@ export function ApplicantsByBarangayChart({ data }: ApplicantsByBarangayChartPro
   return (
     <Card data-testid="chart-applicants-by-barangay">
       <CardHeader>
-        <CardTitle className="text-lg font-semibold">Applicants by Barangay</CardTitle>
+        <CardTitle className="text-lg font-semibold">Applicants in General Santos City</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="h-[300px]">

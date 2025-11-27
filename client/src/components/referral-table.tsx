@@ -307,10 +307,7 @@ export function ReferralTable({ onExportCSV }: ReferralTableProps) {
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="Hired">Hired</SelectItem>
-                  <SelectItem value="Pending">Pending</SelectItem>
                   <SelectItem value="Rejected">Rejected</SelectItem>
-                  <SelectItem value="For Interview">For Interview</SelectItem>
-                  <SelectItem value="Withdrawn">Withdrawn</SelectItem>
                 </SelectContent>
               </Select>
 

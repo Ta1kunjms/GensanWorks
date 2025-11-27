@@ -1,14 +1,16 @@
 import { defineConfig } from "drizzle-kit";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL, ensure the database is provisioned");
-}
+const databaseUrl = process.env.DATABASE_URL || "file:./app.db";
+
+// Determine dialect based on DATABASE_URL
+const isPostgres = databaseUrl.startsWith("postgresql://");
+const dialect = isPostgres ? "postgresql" : "sqlite";
 
 export default defineConfig({
   out: "./migrations",
-  schema: "./shared/schema.ts",
-  dialect: "postgresql",
-  dbCredentials: {
-    url: process.env.DATABASE_URL,
-  },
+  schema: "./server/unified-schema.ts",
+  dialect: dialect,
+  dbCredentials: isPostgres
+    ? { url: databaseUrl }
+    : { url: databaseUrl },
 });

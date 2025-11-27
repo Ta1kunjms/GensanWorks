@@ -116,7 +116,7 @@ export function MonthlyReferralsChart({ data }: MonthlyReferralsChartProps) {
   return (
     <Card data-testid="chart-monthly-referrals">
       <CardHeader>
-        <CardTitle className="text-lg font-semibold">Monthly Referrals Trend</CardTitle>
+        <CardTitle className="text-lg font-semibold">Referrals Trend</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="h-[300px]">
