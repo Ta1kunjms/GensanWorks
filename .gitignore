@@ -5,3 +5,35 @@ server/public
 vite.config.ts.*
 *.tar.gz
 .env
+server/ai-job-matcher.ts
+
+# IDE and editor folders
+.vscode/
+.replit
+.local/
+
+# Environment and secrets
+.env*
+
+# Database and local data
+app.db
+gensan_works.db
+tmp_match.json
+
+# Logs
+dev.log
+server.log
+
+# Build and output
+dist/
+node_modules/
+
+# System files
+.DS_Store
+
+# Test and temp files
+test_*.py
+tests/
+
+# Asset and uploads
+attached_assets/
