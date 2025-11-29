@@ -1,4 +1,4 @@
-import { Home, Users, Briefcase, FileText, BarChart3, LogOut, User, ClipboardList, Settings, HelpCircle, Wand2, MessageCircle } from "lucide-react";
+import { Home, Users, Briefcase, FileText, BarChart3, LogOut, User, ClipboardList, Settings, HelpCircle, Wand2, MessageCircle, Network } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useToast } from '@/hooks/use-toast';
 import { useEffect, useState } from "react";
@@ -19,6 +19,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from "@/components/ui/button";
 
 // Admin role navigation
+// NOTE: Certain items are temporarily hidden from the admin sidebar UI.
+// They retain their definitions so routes/components remain accessible directly.
 const adminMenu = [
   { title: "Home", url: "/admin/dashboard", icon: Home, testId: "nav-admin-dashboard" },
   { title: "Access Requests", url: "/admin/access-requests", icon: ClipboardList, testId: "nav-admin-access-requests" },
@@ -27,6 +29,12 @@ const adminMenu = [
   { title: "Jobs", url: "/admin/jobs", icon: FileText, testId: "nav-admin-jobs" },
   { title: "Matching", url: "/admin/matching", icon: Wand2, testId: "nav-admin-matching" },
   { title: "Reports", url: "/admin/reports", icon: BarChart3, testId: "nav-admin-reports" },
+  // Hidden items (keep code, do not render for admin sidebar)
+  { title: "Use Case Diagram", url: "/admin/use-case-diagram", icon: Network, testId: "nav-admin-use-case", hidden: true },
+  { title: "Diagram: Jobseeker", url: "/admin/use-case-diagram/jobseeker", icon: Network, testId: "nav-admin-use-case-jobseeker", hidden: true },
+  { title: "Diagram: Employer", url: "/admin/use-case-diagram/employer", icon: Network, testId: "nav-admin-use-case-employer", hidden: true },
+  { title: "Use Cases: Jobseeker", url: "/admin/use-cases/jobseeker", icon: FileText, testId: "nav-admin-use-cases-jobseeker", hidden: true },
+  { title: "Use Cases: Employer", url: "/admin/use-cases/employer", icon: FileText, testId: "nav-admin-use-cases-employer", hidden: true },
   { title: "Settings", url: "/admin/settings", icon: Settings, testId: "nav-admin-settings" },
   { title: "Help", url: "/admin/help", icon: HelpCircle, testId: "nav-admin-help" },
 ];
@@ -95,7 +103,7 @@ export function AppSidebar() {
         <SidebarGroup className="py-6">
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => {
+              {menuItems.filter(i => !(role === 'admin' && (i as any).hidden)).map((item) => {
                 const isActive = location === item.url;
                 return (
                   <SidebarMenuItem key={item.title}>

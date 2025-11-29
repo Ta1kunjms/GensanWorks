@@ -127,13 +127,20 @@ After seeding, you can use these demo accounts:
 
 Comprehensive documentation is available in [`DOCUMENTATION.md`](DOCUMENTATION.md), covering:
 
-- **Architecture Overview**: System design and component structure
-- **API Reference**: Complete endpoint documentation
-- **Database Schema**: Table structures and relationships
-- **Development Guide**: Setup, workflows, and best practices
-- **Deployment Guide**: Production build and deployment steps
-- **Troubleshooting**: Common issues and solutions
 
+## Security & Privacy
+
+- **HTTP Security Headers:** The server uses `helmet` to set secure headers. In production, HSTS is enabled.
+- **Data Privacy Act (RA 10173):** The Privacy Policy aligns with DPA 2012 and NPC guidance, covering rights, legal bases, retention, and incident response.
+- **Retention:** Keep personal data only as long as needed. Consider scheduled cleanup scripts for obsolete records.
+- **Access Control:** Enforce role-based permissions for admin/employer/jobseeker routes.
+- **DSAR Workflow:** Provide channels to request access, rectification, erasure/blocking, and portability. Track requests and responses.
+- **Logging:** Audit sensitive operations (admin actions, auth changes). Rotate logs and restrict access.
+
+### Implementation Notes
+- Dev CSP is disabled to avoid Vite conflicts; enable stricter CSP policies in production builds.
+- Use HTTPS for production deployments and set HSTS.
+- Regularly review third-party embeds for accessibility and privacy compliance.
 For quick AI agent onboarding, see [`.github/copilot-instructions.md`](.github/copilot-instructions.md).
 
 ---

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth';
@@ -12,9 +12,22 @@ export default function AdminLogin(){
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [authSettings, setAuthSettings] = useState<{ providers: { id: string; enabled: boolean }[] }>({ providers: [] });
   const { toast } = useToast();
   const { setAuth } = useAuth();
   const [, navigate] = useLocation();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/settings/auth');
+        if (res.ok) {
+          const data = await res.json();
+          setAuthSettings(data);
+        }
+      } catch {}
+    })();
+  }, []);
 
   const handleLogin = async (e:React.FormEvent) => {
     e.preventDefault();
@@ -23,7 +36,7 @@ export default function AdminLogin(){
       if (!password) return toast({ title: 'Validation', description: 'Password is required', variant: 'destructive' });
       
       setIsLoading(true);
-      const res = await fetch('/api/admin/login', { 
+      const res = await fetch('/api/auth/login', { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ email, password }) 
@@ -152,14 +165,25 @@ export default function AdminLogin(){
             </div>
           </div>
 
+          {/* OAuth Providers */}
+          {authSettings.providers.find(p => p.id === 'google' && p.enabled) && (
+            <a
+              href="/auth/google"
+              className="w-full inline-flex items-center justify-center gap-2 bg-white border border-slate-300 hover:border-blue-500 text-slate-900 py-3 rounded-lg transition shadow-sm hover:shadow"
+            >
+              <img src="https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png" alt="Google" className="w-5 h-5" />
+              Continue with Google
+            </a>
+          )}
+
           {/* Sign Up Link */}
           <div className="text-center text-sm">
             <p className="text-slate-600">
               Don't have an admin account?{' '}
               <Link href="/admin/signup">
-                <a className="text-blue-600 hover:text-blue-700 font-semibold transition">
+                <span className="text-blue-600 hover:text-blue-700 font-semibold transition">
                   Request Access
-                </a>
+                </span>
               </Link>
             </p>
           </div>

@@ -28,7 +28,7 @@ export default function EmployerJobsPage() {
   const fetchJobs = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/jobs');
+      const res = await fetch('/api/jobs?limit=10000');
       if (!res.ok) throw new Error('Failed to fetch jobs');
       const data = await res.json();
       setJobs(data.jobs || []);

@@ -1,5 +1,8 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import passport from "passport";
+import { Strategy as GoogleStrategy, Profile as GoogleProfile } from "passport-google-oauth20";
+import { storage } from "./storage";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || "10", 10);
@@ -75,8 +78,11 @@ export function validatePassword(password: string): {
   if (!/[0-9]/.test(password)) {
     errors.push("Password must contain at least one number");
   }
-  if (!/[!@#$%^&*]/.test(password)) {
-    errors.push("Password must contain at least one special character (!@#$%^&*)");
+  // Allow any symbol/punctuation as a special character, not limited set
+  // Matches any non-alphanumeric ASCII punctuation character (excluding spaces)
+  const hasSymbol = /[!"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~]/.test(password);
+  if (!hasSymbol) {
+    errors.push("Password must contain at least one symbol (e.g., !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~)");
   }
 
   return {
@@ -123,3 +129,83 @@ export const ErrorCodes = {
   DUPLICATE_EMAIL: "DUPLICATE_EMAIL",
   INTERNAL_SERVER_ERROR: "INTERNAL_SERVER_ERROR",
 } as const;
+
+// ============ PASSPORT: GOOGLE OAUTH ============
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || "http://localhost:5000/auth/google/callback";
+
+function isGoogleConfig(config: any): config is { clientId: string; clientSecret: string; callbackUrl?: string } {
+  return (
+    typeof config === "object" &&
+    typeof config.clientId === "string" &&
+    typeof config.clientSecret === "string"
+  );
+}
+
+export async function initGoogleOAuth() {
+  // Prefer env vars, fallback to dynamic settings if available
+  let clientID = GOOGLE_CLIENT_ID;
+  let clientSecret = GOOGLE_CLIENT_SECRET;
+  let callbackURL = GOOGLE_CALLBACK_URL;
+
+  // Always try to load from dynamic settings (async)
+  try {
+    if (storage.getAuthSettings) {
+      const val = await storage.getAuthSettings();
+      const google = val?.providers?.find((p: any) => p.id === "google");
+      if (
+        google?.enabled &&
+        isGoogleConfig(google.config)
+      ) {
+        clientID = google.config.clientId;
+        clientSecret = google.config.clientSecret;
+        callbackURL = google.config.callbackUrl || GOOGLE_CALLBACK_URL;
+        if (clientID && clientSecret) {
+          console.log("[Auth] Registering Google OAuth strategy (async settings)...");
+          setupStrategy(clientID, clientSecret, callbackURL);
+          return;
+        }
+      }
+      console.log("[Auth] Google provider not enabled or missing credentials (async settings). Strategy not registered.");
+      return;
+    }
+  } catch (e) {
+    console.error("[Auth] Error loading Google provider settings:", e);
+  }
+
+  // Fallback to env vars
+  if (!clientID || !clientSecret) {
+    console.log("[Auth] Google OAuth credentials not available. Strategy not registered.");
+    return;
+  }
+
+  console.log("[Auth] Registering Google OAuth strategy (env vars)...");
+  setupStrategy(clientID, clientSecret, callbackURL);
+}
+
+function setupStrategy(clientID: string, clientSecret: string, callbackURL: string) {
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID,
+        clientSecret,
+        callbackURL,
+        passReqToCallback: true,
+      },
+      async (_req: any, accessToken: string, _refreshToken: string, profile: GoogleProfile, done: (err: any, user?: any) => void) => {
+        try {
+          const email = profile.emails?.[0]?.value || "";
+          const name = profile.displayName || profile.name?.givenName || "Google User";
+          done(null, { email, name, provider: "google", profile });
+        } catch (e) {
+          done(e);
+        }
+      }
+    )
+  );
+  console.log("[Auth] Google OAuth strategy registered with Passport.");
+}
+
+export { passport };

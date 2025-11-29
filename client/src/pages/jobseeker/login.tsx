@@ -3,7 +3,7 @@
  * Route: /jobseeker/login
  * Accessible to anyone (before authentication)
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, Link } from 'wouter';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
@@ -15,6 +15,16 @@ export default function JobseekerLoginPage() {
   const { toast } = useToast();
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
+  const [authSettings, setAuthSettings] = useState<{ providers: { id: string; enabled: boolean }[] }>({ providers: [] });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/settings/auth');
+        if (res.ok) setAuthSettings(await res.json());
+      } catch {}
+    })();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,6 +96,13 @@ export default function JobseekerLoginPage() {
             >
               {isLoading ? 'Logging in...' : 'Login as Jobseeker'}
             </button>
+
+            {authSettings.providers.find(p => p.id === 'google' && p.enabled) && (
+              <a href="/auth/google?role=jobseeker&prompt=select_account" className="mt-3 w-full inline-flex items-center justify-center gap-2 bg-white border border-slate-300 hover:border-purple-600 text-slate-900 py-2 rounded-lg transition shadow-sm hover:shadow">
+                <img src="https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png" alt="Google" className="w-5 h-5" />
+                Continue with Google
+              </a>
+            )}
           </form>
 
           <div className="mt-6 pt-6 border-t border-slate-200 space-y-3">

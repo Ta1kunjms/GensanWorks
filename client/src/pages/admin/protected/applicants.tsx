@@ -4,6 +4,7 @@
  * Only accessible to users with role='admin'
  */
 import { useState, useEffect, useMemo } from 'react';
+import { authFetch } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,7 +35,10 @@ import { CreateAccountModal } from '@/components/create-account-modal';
 export default function AdminApplicantsPage() {
   const { toast } = useToast();
   const [applicants, setApplicants] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 20;
   const [modalOpen, setModalOpen] = useState(false);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -57,22 +61,66 @@ export default function AdminApplicantsPage() {
   const [sortBy, setSortBy] = useState<string>('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
+  // Fetch applicants when filters, sort, search, or page changes
   useEffect(() => {
     fetchApplicants();
-  }, [sortBy, sortOrder]);
+  }, [sortBy, sortOrder, page, selectedBarangay, selectedStatus, selectedPeriod, selectedType, searchQuery]);
+
+  // Helper to convert registration period to date range
+  function getPeriodDate(period: string): { from?: string; to?: string } {
+    if (period === 'all') return {};
+    const now = new Date();
+    let from: Date;
+    switch (period) {
+      case '7days':
+        from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case '30days':
+        from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case '90days':
+        from = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        break;
+      case '1year':
+        from = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        return {};
+    }
+    return { from: from.toISOString().split('T')[0], to: now.toISOString().split('T')[0] };
+  }
 
   const fetchApplicants = async () => {
     setLoading(true);
     try {
-      // Build query params including sort parameters
       const params = new URLSearchParams();
       params.append('sortBy', sortBy);
       params.append('sortOrder', sortOrder);
-      
-      const res = await fetch(`/api/applicants?${params.toString()}`);
+      params.append('limit', itemsPerPage.toString());
+      params.append('offset', ((page - 1) * itemsPerPage).toString());
+      if (selectedBarangay && selectedBarangay !== 'all') params.append('barangay', selectedBarangay);
+      if (selectedStatus && selectedStatus !== 'all') params.append('employmentStatus', selectedStatus);
+      if (selectedType && selectedType !== 'all') params.append('employmentType', selectedType);
+      if (searchQuery) params.append('search', searchQuery);
+      // Registration period as date range
+      if (selectedPeriod && selectedPeriod !== 'all') {
+        const { from, to } = getPeriodDate(selectedPeriod);
+        if (from) params.append('registeredFrom', from);
+        if (to) params.append('registeredTo', to);
+      }
+      const res = await authFetch(`/api/admin/applicants?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch applicants');
       const data = await res.json();
-      setApplicants(data || []);
+      if (Array.isArray(data)) {
+        setApplicants(data);
+        setTotal(data.length);
+      } else if (data && Array.isArray(data.applicants)) {
+        setApplicants(data.applicants);
+        setTotal(data.total || data.applicants.length);
+      } else {
+        setApplicants([]);
+        setTotal(0);
+      }
       setSelectedIds(new Set());
     } catch (error: any) {
       toast({
@@ -196,88 +244,8 @@ export default function AdminApplicantsPage() {
     setCreateAccountModalOpen(true);
   };
 
-  // Real-time search and filter
-  const filteredApplicants = useMemo(() => {
-    let filtered = applicants;
-    
-    // Apply search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(app => 
-        app.firstName?.toLowerCase().includes(query) ||
-        app.surname?.toLowerCase().includes(query) ||
-        app.email?.toLowerCase().includes(query) ||
-        app.contactNumber?.includes(query) ||
-        app.barangay?.toLowerCase().includes(query) ||
-        app.municipality?.toLowerCase().includes(query) ||
-        app.employmentType?.toLowerCase().includes(query)
-      );
-    }
-    
-    // Apply barangay filter (case-insensitive)
-    if (selectedBarangay !== 'all') {
-      filtered = filtered.filter(app => {
-        const appBarangay = app.barangay?.toLowerCase() || '';
-        const filterBarangay = selectedBarangay.toLowerCase();
-        return appBarangay === filterBarangay;
-      });
-    }
-    
-    // Apply employment status filter (case-insensitive with flexible matching)
-    if (selectedStatus !== 'all') {
-      filtered = filtered.filter(app => {
-        const appStatus = (app.employmentStatus || '').toLowerCase().trim();
-        const filterStatus = selectedStatus.toLowerCase();
-        
-        // Special handling for "New Entrant/Fresh Graduate" to match variations
-        if (filterStatus === 'new entrant/fresh graduate') {
-          return appStatus === 'new entrant/fresh graduate' || 
-                 appStatus === 'new entrant' || 
-                 appStatus === 'fresh graduate';
-        }
-        
-        return appStatus === filterStatus;
-      });
-    }
-    
-    // Apply date period filter (registration date based on createdAt)
-    if (selectedPeriod !== 'all') {
-      const now = new Date();
-      const cutoffDate = new Date();
-      
-      switch (selectedPeriod) {
-        case '7days':
-          cutoffDate.setDate(now.getDate() - 7);
-          break;
-        case '30days':
-          cutoffDate.setDate(now.getDate() - 30);
-          break;
-        case '90days':
-          cutoffDate.setDate(now.getDate() - 90);
-          break;
-        case '1year':
-          cutoffDate.setFullYear(now.getFullYear() - 1);
-          break;
-      }
-      
-      filtered = filtered.filter(app => {
-        // Use createdAt as registration date
-        const regDate = app.createdAt ? new Date(app.createdAt) : null;
-        return regDate && regDate >= cutoffDate;
-      });
-    }
-    
-    // Apply employment type filter (case-insensitive)
-    if (selectedType !== 'all') {
-      filtered = filtered.filter(app => {
-        const appType = app.employmentType?.toLowerCase() || '';
-        const filterType = selectedType.toLowerCase();
-        return appType === filterType;
-      });
-    }
-    
-    return filtered;
-  }, [applicants, searchQuery, selectedBarangay, selectedStatus, selectedPeriod, selectedType]);
+  // No client-side filtering for pagination version; all filters should be sent to backend for real scalability
+  const filteredApplicants = applicants;
   
   // Get unique barangays from applicants
   const barangayOptions = useMemo(() => {
@@ -440,9 +408,15 @@ export default function AdminApplicantsPage() {
         {/* Results count */}
         <div className="mt-3 pt-3 border-t border-slate-200">
           <span className="text-sm text-slate-600">
-            Showing <span className="font-semibold text-slate-900">{filteredApplicants.length}</span> of <span className="font-semibold text-slate-900">{applicants.length}</span> applicants
+            Showing page <span className="font-semibold text-slate-900">{page}</span> of <span className="font-semibold text-slate-900">{Math.ceil(total / itemsPerPage) || 1}</span> — <span className="font-semibold text-slate-900">{total}</span> total applicants
           </span>
         </div>
+            {/* Pagination Controls */}
+            <div className="flex justify-center items-center gap-2 my-6">
+              <Button disabled={page === 1} onClick={() => setPage(page - 1)} size="sm">Previous</Button>
+              <span className="text-sm">Page {page} of {Math.ceil(total / itemsPerPage) || 1}</span>
+              <Button disabled={page >= Math.ceil(total / itemsPerPage)} onClick={() => setPage(page + 1)} size="sm">Next</Button>
+            </div>
       </div>
 
       {selectedIds.size > 0 && (

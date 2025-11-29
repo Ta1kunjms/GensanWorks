@@ -146,7 +146,7 @@ export default function JobMatchingPage() {
     try {
       setLoading(true);
       // Try unified job endpoint first
-      let response = await authFetch(`/api/jobs/${jobId}`);
+      let response = await authFetch(`/api/admin/jobs/${jobId}`); // If using fetch, add credentials: 'include'
 
       if (!response.ok) {
         // Fallback: job vacancy endpoint (raw vacancy shape)

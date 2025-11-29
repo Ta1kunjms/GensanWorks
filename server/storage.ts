@@ -18,6 +18,10 @@ import type {
 import bcrypt from 'bcryptjs';
 import { eq, desc, and, or } from 'drizzle-orm';
 import { initializeDatabase, getDatabase } from './database';
+import fs from 'fs';
+import path, { dirname } from 'path';
+import { fileURLToPath } from 'url';
+const __dirname = dirname(fileURLToPath(import.meta.url));
 import {
   adminsTable,
   applicantsTable,
@@ -78,11 +82,28 @@ export interface IStorage {
   addAdminAccessRequest?(request: { name: string; email: string; phone: string; organization: string }): Promise<any>;
   getAdminAccessRequests?(): Promise<any[]>;
   updateAdminAccessRequest?(id: string, updates: { status: string }): Promise<any>;
+  // Auth settings
+  getAuthSettings?(): Promise<import("@shared/schema").AuthSettings>;
+  updateAuthSettings?(settings: import("@shared/schema").AuthSettings): Promise<import("@shared/schema").AuthSettings>;
 }
 
 export class DatabaseStorage implements IStorage {
   private db: any = null;
   private adminAccessRequests: Map<string, any> = new Map();
+  private authSettings: import("@shared/schema").AuthSettings = { providers: [] };
+  private authSettingsPath = path.join(__dirname, 'data', 'auth-settings.json');
+
+  constructor() {
+    // Load persisted auth settings if available
+    try {
+      if (fs.existsSync(this.authSettingsPath)) {
+        const raw = fs.readFileSync(this.authSettingsPath, 'utf-8');
+        this.authSettings = JSON.parse(raw);
+      }
+    } catch (e) {
+      console.error('[AuthSettings] Failed to load persisted auth settings:', e);
+    }
+  }
 
   async getDb() {
     if (!this.db) {
@@ -248,6 +269,29 @@ export class DatabaseStorage implements IStorage {
         ofwApplicants: this.base(0),
       };
     }
+  }
+
+  async getAuthSettings(): Promise<import("@shared/schema").AuthSettings> {
+    // Always reload from disk in case of external edits
+    try {
+      if (fs.existsSync(this.authSettingsPath)) {
+        const raw = fs.readFileSync(this.authSettingsPath, 'utf-8');
+        this.authSettings = JSON.parse(raw);
+      }
+    } catch (e) {
+      console.error('[AuthSettings] Failed to reload auth settings:', e);
+    }
+    return this.authSettings;
+  }
+
+  async updateAuthSettings(settings: import("@shared/schema").AuthSettings): Promise<import("@shared/schema").AuthSettings> {
+    this.authSettings = settings;
+    try {
+      fs.writeFileSync(this.authSettingsPath, JSON.stringify(this.authSettings, null, 2), 'utf-8');
+    } catch (e) {
+      console.error('[AuthSettings] Failed to persist auth settings:', e);
+    }
+    return this.authSettings;
   }
 
   async getRecentActivities(): Promise<RecentActivity[]> {
@@ -710,7 +754,7 @@ export class DatabaseStorage implements IStorage {
         contactNumber: employer.contactNumber,
         email: employer.email,
         numberOfPaidEmployees: employer.numberOfPaidEmployees,
-        numberOfVacantPositions: employer.numberOfVacantPositions,
+        numberOfVacantPositions: employer.numberOfPaidPositions || employer.numberOfVacantPositions,
         industryType: employer.industryType,
         srsSubscriber: employer.srsSubscriber ? 1 : 0,
         companyTin: (employer as any).companyTIN,

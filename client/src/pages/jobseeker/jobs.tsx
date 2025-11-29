@@ -76,6 +76,7 @@ export default function JobseekerJobsPage() {
       params.append('limit', itemsPerPage.toString());
       params.append('offset', ((page - 1) * itemsPerPage).toString());
       
+      params.append('limit', '10000');
       const res = await fetch(`/api/job-vacancies?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch job vacancies');
       const data = await res.json();

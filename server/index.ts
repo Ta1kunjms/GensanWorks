@@ -3,6 +3,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { setupWebSocket } from "./websocket";
+import { passport, initGoogleOAuth } from "./auth";
+import helmet from "helmet";
 
 const app = express();
 
@@ -17,6 +19,18 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ extended: false }));
+// Security headers
+app.use(helmet({
+  contentSecurityPolicy: false, // Vite dev + inline scripts can conflict; enable in prod via separate config if needed
+  crossOriginEmbedderPolicy: false,
+}));
+// HSTS in production
+if (process.env.NODE_ENV === "production") {
+  app.use(helmet.hsts({ maxAge: 15552000, includeSubDomains: true })); // 180 days
+}
+// Initialize Passport (Google OAuth)
+initGoogleOAuth();
+app.use(passport.initialize());
 
 // Disable caching for API routes
 app.use((req, res, next) => {
@@ -58,7 +72,7 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
+async function startServer() {
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -96,4 +110,14 @@ app.use((req, res, next) => {
     // TEMPORARILY DISABLED TO FIX REFRESH ISSUE
     // setupWebSocket(server);
   });
-})();
+  
+  // Initialize Google OAuth strategy at startup
+  try {
+    initGoogleOAuth();
+    console.log("[Auth] Google OAuth strategy initialization attempted at startup.");
+  } catch (e) {
+    console.error("[Auth] Error initializing Google OAuth at startup:", e);
+  }
+}
+
+startServer();

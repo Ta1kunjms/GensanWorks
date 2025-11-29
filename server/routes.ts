@@ -9,7 +9,6 @@ import {
   initStorageWithDatabase,
 } from "./db-helpers";
 import { 
-  generateToken, 
   verifyPassword, 
   hashPassword, 
   validateEmail,
@@ -36,6 +35,9 @@ import { ZodError } from "zod";
 import { initializeDatabase, getDatabase } from "./database";
 import { applicantsTable, employersTable, jobVacanciesTable, jobsTable, applicationsTable, adminsTable, referralsTable, messagesTable, notificationsTable } from "./unified-schema";
 import { computeProfileCompleteness } from "./utils/status";
+import { authSettingsSchema } from "@shared/schema";
+import { passport, initGoogleOAuth } from "./auth";
+import { generateToken } from "./auth";
 
 // ============ HELPER FUNCTIONS ============
 
@@ -207,6 +209,139 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  // ============ SETTINGS: AUTH PROVIDERS ============
+  // Read current auth settings
+  app.get("/api/settings/auth", async (_req, res) => {
+    try {
+      const current = await storage.getAuthSettings?.();
+      res.json(current ?? { providers: [] });
+    } catch (e) {
+      sendError(res, e);
+    }
+  });
+
+  // Update auth settings
+  app.put("/api/settings/auth", async (req, res) => {
+    try {
+      const parsed = authSettingsSchema.parse(req.body);
+      const updated = await storage.updateAuthSettings?.(parsed);
+      // Re-initialize Google OAuth strategy if Google is enabled
+      if (updated?.providers?.some((p: any) => p.id === "google" && p.enabled)) {
+        if (typeof initGoogleOAuth === "function") {
+          initGoogleOAuth();
+        }
+      }
+      res.json(updated ?? parsed);
+    } catch (e) {
+      sendError(res, e);
+    }
+  });
+
+  // ============ OAUTH: GOOGLE (stub) ============
+  app.get("/auth/google", async (req, res, next) => {
+    try {
+      const settings = await storage.getAuthSettings?.();
+      const google = settings?.providers.find(p => p.id === 'google');
+      if (!google?.enabled) {
+        return res.status(400).json({ error: "Google sign-in is not enabled" });
+      }
+      const role = (req.query.role as string) || "jobseeker";
+      // Use OAuth 'state' to carry the target role
+      (passport.authenticate("google", {
+        scope: ["profile", "email"],
+        state: role,
+        session: false,
+      }) as any)(req, res, next);
+    } catch (e) {
+      sendError(res, e);
+    }
+  });
+
+  app.get("/auth/google/callback", (req, res, next) => {
+    (passport.authenticate("google", { session: false }, async (err: any, user: any, info: any) => {
+      if (err) return sendError(res, err);
+      if (!user) return res.status(401).json({ error: info || "Authentication failed" });
+      const role = (req.query.state as string) || "jobseeker";
+
+      // Link or provision user in database according to role
+      try {
+        const db = getDatabase();
+        const email = user.email || "";
+        const displayName = user.name || "Google User";
+        let idForJwt = email || user.profile?.id || "google-user";
+
+        if (role === "admin") {
+          const existing = await db.select().from(adminsTable).where(eq(adminsTable.email, email));
+          if (existing.length === 0) {
+            const newId = crypto.randomUUID();
+            await db.insert(adminsTable).values({ id: newId, email, name: displayName, createdAt: new Date(), updatedAt: new Date() });
+            idForJwt = newId;
+          } else {
+            idForJwt = existing[0].id;
+          }
+        } else if (role === "employer") {
+          const existing = await db.select().from(employersTable).where(eq(employersTable.email, email));
+          if (existing.length === 0) {
+            const newId = crypto.randomUUID();
+            // Use displayName or a fallback for establishment_name
+            const establishmentName = displayName || "Google Employer";
+            await db.insert(employersTable).values({
+              id: newId,
+              email,
+              name: displayName,
+              establishmentName,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              hasAccount: true
+            });
+            idForJwt = newId;
+          } else {
+            idForJwt = existing[0].id;
+          }
+        } else {
+          // jobseeker/freelancer
+          const existing = await db.select().from(applicantsTable).where(eq(applicantsTable.email, email));
+          if (existing.length === 0) {
+            const newId = crypto.randomUUID();
+            // Split displayName into firstName and surname (fallback if not possible)
+            let firstName = displayName;
+            let surname = "GoogleUser";
+            if (displayName && displayName.includes(" ")) {
+              const parts = displayName.trim().split(" ");
+              firstName = parts.slice(0, -1).join(" ") || displayName;
+              surname = parts.slice(-1).join(" ") || "GoogleUser";
+            }
+            await db.insert(applicantsTable).values({
+              id: newId,
+              email,
+              firstName,
+              surname,
+              hasAccount: true,
+              role: role === "freelancer" ? "freelancer" : "jobseeker",
+              createdAt: new Date(),
+              updatedAt: new Date()
+            });
+            idForJwt = newId;
+          } else {
+            idForJwt = existing[0].id;
+          }
+        }
+
+        // Issue JWT and redirect to client callback page
+        const token = generateToken({
+          id: idForJwt,
+          email: email,
+          role: role as any,
+          name: displayName,
+        });
+        const redirectUrl = `/oauth/callback?token=${encodeURIComponent(token)}&name=${encodeURIComponent(displayName)}&email=${encodeURIComponent(email)}&role=${encodeURIComponent(role)}`;
+        res.redirect(redirectUrl);
+      } catch (linkErr) {
+        sendError(res, linkErr);
+      }
+    }) as any)(req, res, next);
+  });
+
   // ============ PUBLIC STATISTICS FOR LANDING PAGE ============
   
   app.get("/api/public/stats", async (_req, res) => {
@@ -291,7 +426,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let salaryCount = 0;
       
       applicants.forEach((applicant: any) => {
-        const education = applicant.education ? JSON.parse(applicant.education) : [];
+        let education: any[] = [];
+        if (applicant.education) {
+          try {
+            education = JSON.parse(applicant.education);
+            if (!Array.isArray(education)) education = [];
+          } catch (e) {
+            education = [];
+          }
+        }
         education.forEach((edu: any) => {
           if (edu.expectedSalary) {
             const salary = parseInt(edu.expectedSalary);
@@ -1233,7 +1376,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/admin/jobs
-  app.get("/api/admin/jobs", authMiddleware, adminOnly, async (_req, res) => {
+  app.get("/api/admin/jobs", authMiddleware, async (_req, res) => {
     try {
       const jobs = await storage.getJobPosts();
       res.json(jobs);
@@ -1329,7 +1472,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============ EMPLOYER ROUTES ============
 
   // POST /api/employer/jobs - Create a job
-  app.post("/api/employer/jobs", authMiddleware, async (req: any, res) => {
+  app.post("/api/employer/jobs", authMiddleware, async (req: any, res: Response) => {
     try {
       if (req.user.role !== "employer") {
         return res.status(403).json(
@@ -2026,2062 +2169,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/jobseeker/applications - List jobseeker's applications
-  app.get("/api/jobseeker/applications", authMiddleware, async (req: any, res: Response) => {
-    try {
-      if (req.user.role !== "jobseeker" && req.user.role !== "freelancer") {
-        return res.status(403).json({ error: "Only jobseekers can view their applications" });
-      }
-
-      const applications = await (storage as any).getApplicationsByJobseeker?.(
-        req.user.id
-      );
-      res.json(applications || []);
-    } catch (error) {
-      return sendError(res, error);
-    }
-  });
-
-  // ============ LEGACY ENDPOINTS (for backward compatibility) ============
-
-  // GET /api/jobseekers
-  app.get("/api/jobseekers", async (_req, res) => {
-    try {
-      const list = await storage.getJobseekers();
-      res.json(list);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch jobseekers" });
-    }
-  });
-
-  // GET /api/applicants
-  app.get("/api/applicants", async (req, res) => {
-    try {
-      // Extract query parameters for sorting and filtering
-      const sortBy = req.query.sortBy as string || 'createdAt';
-      const sortOrder = req.query.sortOrder as string || 'desc';
-      const dateFrom = req.query.dateFrom as string;
-      const dateTo = req.query.dateTo as string;
-      
-      try {
-        const db = getDatabase();
-        let applicants = await db.select().from(applicantsTable);
-        
-        // Filter by date range if provided (for registration period)
-        if (dateFrom || dateTo) {
-          applicants = applicants.filter((app: any) => {
-            const regDate = app.createdAt ? new Date(app.createdAt) : null;
-            if (!regDate) return false;
-            
-            if (dateFrom) {
-              const fromDate = new Date(dateFrom);
-              if (regDate < fromDate) return false;
-            }
-            
-            if (dateTo) {
-              const toDate = new Date(dateTo);
-              toDate.setHours(23, 59, 59, 999); // Include the entire day
-              if (regDate > toDate) return false;
-            }
-            
-            return true;
-          });
-        }
-        
-        // Sort applicants
-        applicants = applicants.sort((a: any, b: any) => {
-          let aVal = a[sortBy];
-          let bVal = b[sortBy];
-          
-          // Handle date sorting
-          if (sortBy === 'createdAt' || sortBy === 'updatedAt') {
-            aVal = aVal ? new Date(aVal).getTime() : 0;
-            bVal = bVal ? new Date(bVal).getTime() : 0;
-          }
-          
-          // Handle string sorting
-          if (typeof aVal === 'string' && typeof bVal === 'string') {
-            aVal = aVal.toLowerCase();
-            bVal = bVal.toLowerCase();
-          }
-          
-          // Handle null/undefined
-          if (aVal == null) return 1;
-          if (bVal == null) return -1;
-          
-          if (sortOrder === 'asc') {
-            return aVal > bVal ? 1 : aVal < bVal ? -1 : 0;
-          } else {
-            return aVal < bVal ? 1 : aVal > bVal ? -1 : 0;
-          }
-        });
-        
-        // Format timestamps - hasAccount is already a field in the table
-        const formattedApplicants = (applicants || []).map((applicant: any) => formatTimestamps(applicant));
-        
-        res.json(formattedApplicants);
-      } catch (dbError) {
-        // Fallback to storage
-        const applicants = await storage.getApplicants?.();
-        const formattedApplicants = (applicants || []).map(a => ({
-          ...formatTimestamps(a),
-          hasAccount: false,
-        }));
-        res.json(formattedApplicants);
-      }
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch applicants" });
-    }
-  });
-
-  // POST /api/applicants - Add new applicant (NSRP Form)
-  app.post("/api/applicants", async (req: Request, res: Response) => {
-    try {
-      const { applicantCreateSchema } = await import("@shared/schema");
-      
-      try {
-        const payload = applicantCreateSchema.parse(req.body);
-        
-        try {
-          const db = getDatabase();
-          const now = new Date();
-          const result = await db.insert(applicantsTable).values({
-            // Personal Information
-            surname: payload.surname,
-            firstName: payload.firstName,
-            middleName: payload.middleName || null,
-            suffix: payload.suffix || null,
-            dateOfBirth: payload.dateOfBirth,
-            sex: payload.sex,
-            religion: payload.religion || null,
-            civilStatus: payload.civilStatus,
-            height: payload.height || null,
-            contactNumber: payload.contactNumber || null,
-            email: payload.email || null,
-            // Address (NSRP)
-            houseStreetVillage: payload.houseStreetVillage || null,
-            barangay: payload.barangay,
-            municipality: payload.municipality,
-            province: payload.province,
-            // Disability (NSRP)
-            disability: payload.disability || null,
-            disabilitySpecify: payload.disabilitySpecify || null,
-            // Employment Status (NSRP)
-            employmentStatus: payload.employmentStatus || null,
-            employmentType: payload.employmentType || null,
-            monthsUnemployed: payload.monthsUnemployed || null,
-            // OFW Status (NSRP)
-            isOFW: payload.isOFW || false,
-            owfCountry: payload.owfCountry || null,
-            isFormerOFW: payload.isFormerOFW || false,
-            formerOFWCountry: payload.formerOFWCountry || null,
-            returnToPHDate: payload.returnToPHDate || null,
-            // 4Ps Beneficiary (NSRP)
-            is4PSBeneficiary: payload.is4PSBeneficiary || false,
-            householdID: payload.householdID || null,
-            // Job Preferences (NSRP)
-            preferredOccupations: payload.preferredOccupations || null,
-            preferredLocations: payload.preferredLocations || null,
-            preferredOverseasCountries: payload.preferredOverseasCountries || null,
-            employmentType4: payload.employmentType4 || null,
-            // NSRP Arrays
-            languageProficiency: payload.languageProficiency || null,
-            education: payload.education || null,
-            technicalTraining: payload.technicalTraining || null,
-            professionalLicenses: payload.professionalLicenses || null,
-            workExperience: payload.workExperience || null,
-            otherSkills: payload.otherSkills || null,
-            otherSkillsSpecify: payload.otherSkillsSpecify || null,
-            createdAt: now,
-            updatedAt: now,
-          }).returning();
-
-          res.status(201).json({
-            success: true,
-            message: "Applicant added successfully",
-            applicant: result[0],
-          });
-        } catch (dbError: any) {
-          console.error("Database error:", dbError);
-          // Fallback to storage if database not available
-          const applicant = {
-            id: `applicant_${Date.now()}`,
-            ...payload,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          };
-
-          if (storage.addApplicant) {
-            await storage.addApplicant(applicant);
-          }
-
-          res.status(201).json({
-            success: true,
-            message: "Applicant added successfully (fallback storage)",
-            applicant,
-          });
-        }
-      } catch (validationError: any) {
-        console.error("Validation error:", validationError.message);
-        res.status(400).json({
-          success: false,
-          message: "Validation error",
-          error: validationError.message,
-        });
-      }
-    } catch (error: any) {
-      console.error("Request error:", error);
-      sendError(res, error);
-    }
-  });
-
-  // PUT /api/applicants/:id - Update applicant (NSRP Form)
-  app.put("/api/applicants/:id", async (req: Request, res: Response) => {
-    try {
-      const { id } = req.params;
-      const payload = req.body;
-
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: "Applicant ID is required",
-        });
-      }
-
-      try {
-        const db = getDatabase();
-        const { eq } = await import("drizzle-orm");
-        
-        // Build update object with all NSRP fields
-        const updateData: any = {
-          // Personal Information
-          surname: payload.surname,
-          firstName: payload.firstName,
-          middleName: payload.middleName || null,
-          suffix: payload.suffix || null,
-          dateOfBirth: payload.dateOfBirth,
-          sex: payload.sex,
-          religion: payload.religion || null,
-          civilStatus: payload.civilStatus,
-          height: payload.height || null,
-          contactNumber: payload.contactNumber || null,
-          email: payload.email || null,
-          
-          // Disability (NSRP)
-          disability: payload.disability || null,
-          disabilitySpecify: payload.disabilitySpecify || null,
-          
-          // Address (NSRP)
-          houseStreetVillage: payload.houseStreetVillage || null,
-          barangay: payload.barangay,
-          municipality: payload.municipality,
-          province: payload.province,
-          
-          // Employment Status (NSRP)
-          employmentStatus: payload.employmentStatus || null,
-          employmentType: payload.employmentType || null,
-          monthsUnemployed: payload.monthsUnemployed || null,
-          
-          // OFW Status (NSRP)
-          isOFW: payload.isOFW || false,
-          owfCountry: payload.owfCountry || null,
-          isFormerOFW: payload.isFormerOFW || false,
-          formerOFWCountry: payload.formerOFWCountry || null,
-          returnToPHDate: payload.returnToPHDate || null,
-          
-          // 4Ps Beneficiary (NSRP)
-          is4PSBeneficiary: payload.is4PSBeneficiary || false,
-          householdID: payload.householdID || null,
-          
-          // Job Preferences (NSRP)
-          preferredOccupations: payload.preferredOccupations || null,
-          preferredLocations: payload.preferredLocations || null,
-          preferredOverseasCountries: payload.preferredOverseasCountries || null,
-          employmentType4: payload.employmentType4 || null,
-          
-          // NSRP Arrays
-          education: payload.education || null,
-          technicalTraining: payload.technicalTraining || null,
-          professionalLicenses: payload.professionalLicenses || null,
-          languageProficiency: payload.languageProficiency || null,
-          workExperience: payload.workExperience || null,
-          otherSkills: payload.otherSkills || null,
-          otherSkillsSpecify: payload.otherSkillsSpecify || null,
-          
-          // Update timestamp
-          updatedAt: new Date(),
-        };
-        
-        const result = await db
-          .update(applicantsTable)
-          .set(updateData)
-          .where(eq(applicantsTable.id, id))
-          .returning();
-
-        if (result.length === 0) {
-          return res.status(404).json({
-            success: false,
-            message: "Applicant not found",
-          });
-        }
-
-        console.log(`✅ Applicant ${id} updated successfully with NSRP data`);
-
-        res.json({
-          success: true,
-          message: "Profile updated successfully",
-          applicant: result[0],
-        });
-      } catch (dbError: any) {
-        console.error("Database error updating applicant:", dbError);
-        res.status(500).json({
-          success: false,
-          message: "Failed to update applicant profile",
-          error: dbError.message,
-        });
-      }
-    } catch (error: any) {
-      console.error("Request error:", error);
-      sendError(res, error);
-    }
-  });
-
-  // DELETE /api/applicants/:id - Delete single applicant
-  app.delete("/api/applicants/:id", async (req: Request, res: Response) => {
-    try {
-      const { id } = req.params;
-
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: "Applicant ID is required",
-        });
-      }
-
-      try {
-        const db = getDatabase();
-        const { eq } = await import("drizzle-orm");
-        const result = await db
-          .delete(applicantsTable)
-          .where(eq(applicantsTable.id, id))
-          .returning();
-
-        if (result.length === 0) {
-          return res.status(404).json({
-            success: false,
-            message: "Applicant not found",
-          });
-        }
-
-        res.json({
-          success: true,
-          message: "Applicant deleted successfully",
-          applicant: result[0],
-        });
-      } catch (dbError: any) {
-        console.error("Database error:", dbError);
-        // Fallback to storage if database not available
-        if (storage.deleteApplicant) {
-          await storage.deleteApplicant(id);
-        }
-
-        res.json({
-          success: true,
-          message: "Applicant deleted successfully (fallback storage)",
-        });
-      }
-    } catch (error: any) {
-      console.error("Request error:", error);
-      sendError(res, error);
-    }
-  });
-
-  // POST /api/applicants/bulk-delete - Delete multiple applicants
-  app.post("/api/applicants/bulk-delete", async (req: Request, res: Response) => {
-    try {
-      const { ids } = req.body;
-
-      if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Array of applicant IDs is required",
-        });
-      }
-
-      try {
-        const db = getDatabase();
-        const { inArray } = await import("drizzle-orm");
-        const result = await db
-          .delete(applicantsTable)
-          .where(inArray(applicantsTable.id, ids))
-          .returning();
-
-        res.json({
-          success: true,
-          message: `${result.length} applicant(s) deleted successfully`,
-          deletedCount: result.length,
-        });
-      } catch (dbError: any) {
-        console.error("Database error:", dbError);
-        // Fallback to storage if database not available
-        if (storage.deleteApplicants) {
-          await storage.deleteApplicants(ids);
-        }
-
-        res.json({
-          success: true,
-          message: `${ids.length} applicant(s) deleted successfully (fallback storage)`,
-          deletedCount: ids.length,
-        });
-      }
-    } catch (error: any) {
-      console.error("Request error:", error);
-      sendError(res, error);
-    }
-  });
-
-  // POST /api/applicants/:id/create-account - Create user account from applicant
-  app.post("/api/applicants/:id/create-account", async (req: Request, res: Response) => {
-    try {
-      const { id } = req.params;
-      const { password } = req.body;
-
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: "Applicant ID is required",
-        });
-      }
-
-      if (!password || password.length < 6) {
-        return res.status(400).json({
-          success: false,
-          message: "Password must be at least 6 characters",
-        });
-      }
-
-      const db = getDatabase();
-      
-      // Get the applicant
-      const applicant = await db.select().from(applicantsTable).where(eq(applicantsTable.id, id)).limit(1);
-      
-      if (applicant.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "Applicant not found",
-        });
-      }
-
-      const applicantData = applicant[0];
-
-      // Check if email exists
-      if (!applicantData.email) {
-        return res.status(400).json({
-          success: false,
-          message: "Applicant must have an email address to create an account",
-        });
-      }
-
-      // Check if applicant already has account
-      if (applicantData.hasAccount && applicantData.passwordHash) {
-        return res.status(400).json({
-          success: false,
-          message: "This applicant already has an account",
-        });
-      }
-
-      // Hash password
-      const passwordHash = await hashPassword(password);
-
-      // Determine role based on employmentType
-      let role: "jobseeker" | "freelancer" = "jobseeker";
-      if (applicantData.employmentType?.toLowerCase().includes("freelancer")) {
-        role = "freelancer";
-      }
-
-      // Update applicant with login credentials
-      const updatedApplicant = await db.update(applicantsTable)
-        .set({
-          passwordHash,
-          role,
-          hasAccount: true,
-          updatedAt: new Date(),
-        })
-        .where(eq(applicantsTable.id, id))
-        .returning();
-
-      res.status(201).json({
-        success: true,
-        message: `Account created successfully for ${applicantData.firstName} ${applicantData.surname}`,
-        user: {
-          id: updatedApplicant[0].id,
-          name: `${updatedApplicant[0].firstName} ${updatedApplicant[0].surname}`,
-          email: updatedApplicant[0].email,
-          role: updatedApplicant[0].role,
-        },
-      });
-    } catch (error: any) {
-      console.error("Create account error:", error);
-      res.status(500).json({
-        success: false,
-        message: error.message || "Failed to create account",
-      });
-    }
-  });
-
-  // GET /api/employers
-  app.get("/api/employers", async (_req, res) => {
-    try {
-      const db = getDatabase();
-      const { normalizeIndustryTypes } = await import("./db-helpers");
-      const employers = await db.select().from(employersTable);
-      
-      // Normalize industry codes for all employers and format timestamps
-      const normalizedEmployers = employers.map((emp: any) => 
-        formatTimestamps({
-          ...emp,
-          industryType: normalizeIndustryTypes(emp.industryType),
-        })
-      );
-      
-      res.json(normalizedEmployers || []);
-    } catch (dbError) {
-      console.error('Database error fetching employers:', dbError);
-      // Fallback to storage
-      try {
-        const employers = await storage.getEmployers?.();
-        // Format timestamps for storage results too
-        const formattedEmployers = (employers || []).map(formatTimestamps);
-        res.json(formattedEmployers);
-      } catch (error) {
-        res.json([]);
-      }
-    }
-  });
-
-  // POST /api/employers/check-duplicate - Check if employer already exists
-  app.post("/api/employers/check-duplicate", async (req: Request, res: Response) => {
-    try {
-      const { establishmentName, companyTIN } = req.body;
-      const db = getDatabase();
-
-      // Check by establishment name
-      if (establishmentName) {
-        const existing = await db
-          .select()
-          .from(employersTable)
-          .where(eq(employersTable.establishmentName, establishmentName));
-        
-        if (existing.length > 0) {
-          return res.json({ isDuplicate: true, type: "name", message: "An employer with this establishment name already exists" });
-        }
-      }
-
-      // Check by TIN
-      if (companyTIN) {
-        const existing = await db
-          .select()
-          .from(employersTable)
-          .where(eq(employersTable.companyTin, companyTIN));
-        
-        if (existing.length > 0) {
-          return res.json({ isDuplicate: true, type: "tin", message: "An employer with this TIN already exists" });
-        }
-      }      if (companyTIN) {
-        const existing = await db
-          .select()
-          .from(employersTable)
-          .where(eq(employersTable.companyTin, companyTIN));
-        
-        if (existing.length > 0) {
-          return res.json({ isDuplicate: true, type: "tin", message: "An employer with this TIN already exists" });
-        }
-      }
-
-      res.json({ isDuplicate: false });
-    } catch (error: any) {
-      console.error("Error checking duplicate employer:", error);
-      res.status(500).json({ error: "Failed to check duplicate" });
-    }
-  });
-
-  // POST /api/employers - Add new employer (SRS Form 2)
-  app.post("/api/employers", async (req: Request, res: Response) => {
-    try {
-      const { employerCreateSchema } = await import("@shared/schema");
-      const payload = employerCreateSchema.parse(req.body);
-
-      try {
-        const db = getDatabase();
-        const now = new Date();
-        const result = await db.insert(employersTable).values({
-          establishmentName: payload.establishmentName,
-          houseStreetVillage: payload.houseStreetVillage,
-          barangay: payload.barangay,
-          municipality: payload.municipality,
-          province: payload.province,
-          contactNumber: payload.contactNumber,
-          email: payload.email,
-          numberOfPaidEmployees: payload.numberOfPaidEmployees,
-          numberOfVacantPositions: payload.numberOfVacantPositions,
-          industryType: payload.industryType,
-          srsSubscriber: payload.srsSubscriber || false,
-          companyTIN: payload.companyTIN,
-          businessPermitNumber: payload.businessPermitNumber,
-          bir2303Number: payload.bir2303Number,
-          chairpersonName: payload.chairpersonName,
-          chairpersonContact: payload.chairpersonContact,
-          secretaryName: payload.secretaryName,
-          secretaryContact: payload.secretaryContact,
-          preparedByName: payload.preparedByName,
-          preparedByDesignation: payload.preparedByDesignation,
-          preparedByContact: payload.preparedByContact,
-          dateAccomplished: payload.dateAccomplished,
-          remarks: payload.remarks,
-          isManpowerAgency: payload.isManpowerAgency || false,
-          doleCertificationNumber: payload.doleCertificationNumber,
-          createdAt: now,
-          updatedAt: now,
-        }).returning();
-
-        res.status(201).json({
-          success: true,
-          message: "Employer added successfully",
-          employer: result[0],
-        });
-      } catch (dbError) {
-        // Fallback to storage if database not available
-        const employer = {
-          id: Date.now().toString(),
-          ...payload,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        if (storage.addEmployer) {
-          await storage.addEmployer(employer);
-        }
-
-        res.status(201).json({
-          success: true,
-          message: "Employer added successfully (fallback storage)",
-          employer,
-        });
-      }
-    } catch (error) {
-      sendError(res, error);
-    }
-  });
-
-  // DELETE /api/employers/:id - Delete single employer
-  app.delete("/api/employers/:id", async (req: Request, res: Response) => {
-    try {
-      const { id } = req.params;
-
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: "Employer ID is required",
-        });
-      }
-
-      try {
-        const db = getDatabase();
-        const { eq } = await import("drizzle-orm");
-
-        const result = await db
-          .delete(employersTable)
-          .where(eq(employersTable.id, id))
-          .returning();
-
-        if (result.length === 0) {
-          return res.status(404).json({
-            success: false,
-            message: "Employer not found",
-          });
-        }
-
-        res.json({
-          success: true,
-          message: "Employer deleted successfully",
-          employer: result[0],
-        });
-      } catch (dbError: any) {
-        console.error("Database error:", dbError);
-        res.status(500).json({
-          success: false,
-          message: "Failed to delete employer",
-          error: dbError.message,
-        });
-      }
-    } catch (error: any) {
-      console.error("Request error:", error);
-      sendError(res, error);
-    }
-  });
-
-  // POST /api/employers/bulk-delete - Delete multiple employers
-  app.post("/api/employers/bulk-delete", async (req: Request, res: Response) => {
-    try {
-      const { ids } = req.body;
-
-      if (!ids || !Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Employer IDs array is required",
-        });
-      }
-
-      try {
-        const db = getDatabase();
-        const { inArray } = await import("drizzle-orm");
-
-        const result = await db
-          .delete(employersTable)
-          .where(inArray(employersTable.id, ids))
-          .returning();
-
-        if (result.length === 0) {
-          return res.status(404).json({
-            success: false,
-            message: "No employers found to delete",
-          });
-        }
-
-        res.json({
-          success: true,
-          message: `${result.length} employer(s) deleted successfully`,
-          count: result.length,
-          employers: result,
-        });
-      } catch (dbError: any) {
-        console.error("Database error:", dbError);
-        res.status(500).json({
-          success: false,
-          message: "Failed to delete employers",
-          error: dbError.message,
-        });
-      }
-    } catch (error: any) {
-      console.error("Request error:", error);
-      sendError(res, error);
-    }
-  });
-
-  // PATCH /api/employers/:employerId/archive - Archive an employer
-  app.patch("/api/employers/:employerId/archive", async (req: Request, res: Response) => {
-    try {
-      const employerId = req.params.employerId;
-      const db = getDatabase();
-      const { normalizeIndustryTypes } = await import("./db-helpers");
-
-      const result = await db
-        .update(employersTable)
-        .set({
-          archived: true,
-          archivedAt: new Date(),
-        })
-        .where(eq(employersTable.id, employerId))
-        .returning();
-
-      if (result.length === 0) {
-        return res.status(404).json({ error: "Employer not found" });
-      }
-
-      const employer = {
-        ...result[0],
-        industryType: normalizeIndustryTypes(result[0].industryType),
-      };
-
-      res.json({ message: "Employer archived successfully", employer });
-    } catch (error: any) {
-      console.error("Error archiving employer:", error);
-      sendError(res, error);
-    }
-  });
-
-  // GET /api/employers/archived - Get all archived employers
-  app.get("/api/employers/archived", async (_req, res) => {
-    try {
-      const db = getDatabase();
-      const { normalizeIndustryTypes } = await import("./db-helpers");
-      
-      const archivedEmployers = await db
-        .select()
-        .from(employersTable)
-        .where(eq(employersTable.archived, true));
-
-      const normalized = archivedEmployers.map((emp: any) => {
-        // Handle industryType - it might be a string (JSON) or already parsed
-        let industryType = emp.industryType;
-        if (typeof industryType === 'string') {
-          try {
-            industryType = JSON.parse(industryType);
-          } catch (e) {
-            industryType = [];
-          }
-        }
-        
-        return {
-          ...emp,
-          industryType: normalizeIndustryTypes(industryType),
-        };
-      });
-
-      res.json({ employers: normalized });
-    } catch (error: any) {
-      console.error("Error fetching archived employers:", error);
-      res.status(500).json({ error: "Failed to fetch archived employers", details: error.message });
-    }
-  });
-
-  // PATCH /api/employers/:employerId/unarchive - Restore an archived employer
-  app.patch("/api/employers/:employerId/unarchive", async (req: Request, res: Response) => {
-    try {
-      const employerId = req.params.employerId;
-      const db = getDatabase();
-      const { normalizeIndustryTypes } = await import("./db-helpers");
-
-      const result = await db
-        .update(employersTable)
-        .set({
-          archived: false,
-          archivedAt: null,
-        })
-        .where(eq(employersTable.id, employerId))
-        .returning();
-
-      if (result.length === 0) {
-        return res.status(404).json({ error: "Employer not found" });
-      }
-
-      const employer = {
-        ...result[0],
-        industryType: normalizeIndustryTypes(result[0].industryType),
-      };
-
-      res.json({ message: "Employer restored successfully", employer });
-    } catch (error: any) {
-      console.error("Error restoring employer:", error);
-      sendError(res, error);
-    }
-  });
-
-  // GET /api/job-vacancies - Get only OPEN job vacancies with filters
-  app.get("/api/job-vacancies", async (req, res) => {
-    try {
-      const db = getDatabase();
-      const allVacancies = await db.select().from(jobVacanciesTable);
-      
-      // Parse query parameters
-      const {
-        search,
-        minSalary,
-        maxSalary,
-        educationLevel,
-        minExperience,
-        maxExperience,
-        industry,
-        jobStatus,
-        salaryType,
-        sortBy = 'date',
-        sortOrder = 'desc',
-        limit,
-        offset,
-      } = req.query;
-      
-      // Filter for open vacancies only (has available slots and not archived)
-      let openVacancies = (allVacancies || [])
-        .filter((v: any) => !v.archived);
-      
-      // Apply search filter
-      if (search && typeof search === 'string') {
-        const searchLower = search.toLowerCase();
-        openVacancies = openVacancies.filter((v: any) =>
-          v.positionTitle?.toLowerCase().includes(searchLower) ||
-          v.establishmentName?.toLowerCase().includes(searchLower) ||
-          v.mainSkillOrSpecialization?.toLowerCase().includes(searchLower) ||
-          v.jobDescription?.toLowerCase().includes(searchLower)
-        );
-      }
-      
-      // Apply salary filters
-      if (minSalary) {
-        const min = Number(minSalary);
-        openVacancies = openVacancies.filter((v: any) => (v.startingSalaryOrWage || 0) >= min);
-      }
-      if (maxSalary) {
-        const max = Number(maxSalary);
-        openVacancies = openVacancies.filter((v: any) => (v.startingSalaryOrWage || 0) <= max);
-      }
-      
-      // Apply education filter
-      if (educationLevel && typeof educationLevel === 'string') {
-        openVacancies = openVacancies.filter((v: any) =>
-          v.minimumEducationRequired?.toLowerCase().includes(educationLevel.toLowerCase())
-        );
-      }
-      
-      // Apply experience filters
-      if (minExperience) {
-        const min = Number(minExperience);
-        openVacancies = openVacancies.filter((v: any) => (v.yearsOfExperienceRequired || 0) >= min);
-      }
-      if (maxExperience) {
-        const max = Number(maxExperience);
-        openVacancies = openVacancies.filter((v: any) => (v.yearsOfExperienceRequired || 0) <= max);
-      }
-      
-      // Apply industry filter
-      if (industry && typeof industry === 'string') {
-        openVacancies = openVacancies.filter((v: any) => {
-          let vacancyIndustries: string[] = [];
-          if (typeof v.industryCodes === 'string') {
-            try { vacancyIndustries = JSON.parse(v.industryCodes); } catch {}
-          } else if (Array.isArray(v.industryCodes)) {
-            vacancyIndustries = v.industryCodes;
-          }
-          return vacancyIndustries.some((code: string) => code === industry || code.toLowerCase().includes(industry.toLowerCase()));
-        });
-      }
-      
-      // Apply job status filter
-      if (jobStatus && typeof jobStatus === 'string') {
-        openVacancies = openVacancies.filter((v: any) =>
-          v.jobStatus?.toLowerCase() === jobStatus.toLowerCase()
-        );
-      }
-      
-      // salaryType removed in strict SRS Form 2A
-      
-      // Apply sorting
-      openVacancies.sort((a: any, b: any) => {
-        let compareValue = 0;
-        
-        if (sortBy === 'salary') {
-          compareValue = (a.startingSalaryOrWage || 0) - (b.startingSalaryOrWage || 0);
-        } else if (sortBy === 'date') {
-          const dateA = new Date(a.createdAt).getTime();
-          const dateB = new Date(b.createdAt).getTime();
-          compareValue = dateA - dateB;
-        } else if (sortBy === 'relevance') {
-          // Simple relevance: newer + higher salary
-          const scoreA = new Date(a.createdAt).getTime() / 1000000 + (a.startingSalaryOrWage || 0);
-          const scoreB = new Date(b.createdAt).getTime() / 1000000 + (b.startingSalaryOrWage || 0);
-          compareValue = scoreA - scoreB;
-        }
-        
-        return sortOrder === 'asc' ? compareValue : -compareValue;
-      });
-      
-      // Apply pagination
-      const total = openVacancies.length;
-      if (limit || offset) {
-        const limitNum = limit ? Number(limit) : total;
-        const offsetNum = offset ? Number(offset) : 0;
-        openVacancies = openVacancies.slice(offsetNum, offsetNum + limitNum);
-      }
-      
-      // Parse industryCodes from JSON string if needed
-      const mappedVacancies = openVacancies.map((v: any) => {
-        let industryCodes: string[] = [];
-        if (typeof v.industryCodes === 'string') {
-          try { industryCodes = JSON.parse(v.industryCodes); } catch {}
-        } else if (Array.isArray(v.industryCodes)) {
-          industryCodes = v.industryCodes;
-        }
-        return { ...v, industryCodes };
-      });
-      
-      res.json({
-        vacancies: mappedVacancies,
-        total,
-        limit: limit ? Number(limit) : total,
-        offset: offset ? Number(offset) : 0,
-      });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch job vacancies" });
-    }
-  });
-
-  // GET /api/job-vacancies/archived - Get archived job vacancies
-  app.get("/api/job-vacancies/archived", async (_req, res) => {
-    try {
-      const db = getDatabase();
-      const allVacancies = await db.select().from(jobVacanciesTable);
-      
-      // Filter for archived vacancies
-      const archivedVacancies = (allVacancies || [])
-        .filter((v: any) => v.archived)
-        .sort((a: any, b: any) => {
-          const dateA = new Date(a.archivedAt || a.updatedAt).getTime();
-          const dateB = new Date(b.archivedAt || b.updatedAt).getTime();
-          return dateB - dateA; // Most recent archived first
-        });
-      
-      res.json(archivedVacancies);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch archived job vacancies" });
-    }
-  });
-
-  // POST /api/job-vacancies - Add new job vacancy (SRS Form 2A)
-  app.post("/api/job-vacancies", async (req: Request, res: Response) => {
-    try {
-      console.log("[POST /api/job-vacancies] Received body:", JSON.stringify(req.body, null, 2));
-      const { jobVacancyCreateSchema } = await import("@shared/schema");
-      const payload = jobVacancyCreateSchema.parse(req.body);
-
-      try {
-        const db = getDatabase();
-        const now = new Date();
-        const result = await db.insert(jobVacanciesTable).values({
-          employerId: payload.employerId,
-          establishmentName: payload.establishmentName,
-          positionTitle: payload.positionTitle,
-          industryCodes: JSON.stringify(payload.industryCodes),
-          minimumEducationRequired: payload.minimumEducationRequired,
-          mainSkillOrSpecialization: payload.mainSkillOrSpecialization,
-          yearsOfExperienceRequired: payload.yearsOfExperienceRequired,
-          agePreference: payload.agePreference,
-          startingSalaryOrWage: payload.startingSalaryOrWage,
-          vacantPositions: payload.vacantPositions,
-          paidEmployees: payload.paidEmployees,
-          jobStatus: payload.jobStatus,
-          preparedByName: payload.preparedByName,
-          preparedByDesignation: payload.preparedByDesignation,
-          preparedByContact: payload.preparedByContact,
-          dateAccomplished: payload.dateAccomplished,
-          createdAt: now,
-          updatedAt: now,
-        }).returning();
-
-        res.status(201).json({
-          success: true,
-          message: "Job vacancy added successfully",
-          vacancy: result[0],
-        });
-      } catch (dbError) {
-        // Fallback to storage if database not available
-        const vacancy = {
-          id: Date.now().toString(),
-          ...payload,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        if (storage.addJobVacancy) {
-          await storage.addJobVacancy(vacancy);
-        }
-
-        res.status(201).json({
-          success: true,
-          message: "Job vacancy added successfully (fallback storage)",
-          vacancy,
-        });
-      }
-    } catch (error) {
-      sendError(res, error);
-    }
-  });
-
-  // PATCH /api/job-vacancies/:vacancyId/archive - Archive a job vacancy
-  app.patch("/api/job-vacancies/:vacancyId/archive", async (req: Request, res: Response) => {
-    try {
-      const { vacancyId } = req.params;
-      const db = getDatabase();
-      const now = new Date();
-
-      const result = await db.update(jobVacanciesTable).set({ archived: true, archivedAt: now }).where(eq(jobVacanciesTable.id, vacancyId));
-
-      if (!result || result.changes === 0) {
-        return res.status(404).json({ error: "Job vacancy not found" });
-      }
-
-      res.json({
-        success: true,
-        message: "Job vacancy archived successfully",
-      });
-    } catch (error) {
-      sendError(res, error);
-    }
-  });
-
-  // PATCH /api/job-vacancies/:vacancyId/unarchive - Unarchive a job vacancy
-  app.patch("/api/job-vacancies/:vacancyId/unarchive", async (req: Request, res: Response) => {
-    try {
-      const { vacancyId } = req.params;
-      const db = getDatabase();
-
-      const result = await db.update(jobVacanciesTable).set({ archived: false, archivedAt: null }).where(eq(jobVacanciesTable.id, vacancyId));
-
-      if (!result || result.changes === 0) {
-        return res.status(404).json({ error: "Job vacancy not found" });
-      }
-
-      res.json({
-        success: true,
-        message: "Job vacancy unarchived successfully",
-      });
-    } catch (error) {
-      sendError(res, error);
-    }
-  });
-
-  // POST /api/job-vacancies/:vacancyId/apply - Apply to a job vacancy
-  app.post("/api/job-vacancies/:vacancyId/apply", authMiddleware, async (req: any, res: Response) => {
-    try {
-      if (!["jobseeker", "freelancer"].includes(req.user.role)) {
-        return res.status(403).json(
-          createErrorResponse(
-            ErrorCodes.FORBIDDEN,
-            "Only jobseekers can apply to job vacancies"
-          )
-        );
-      }
-
-      const { vacancyId } = req.params;
-      const { coverLetter } = req.body;
-      
-      // Use the applyToJob method from storage with cover letter
-      const application = await storage.applyToJob(
-        vacancyId, 
-        {
-          id: req.user.id,
-          name: req.user.name,
-        },
-        coverLetter
-      );
-
-      res.status(201).json({
-        success: true,
-        message: 'Application submitted successfully',
-        application,
-      });
-    } catch (error: any) {
-      return sendError(res, error);
-    }
-  });
-
-  // GET /api/job-vacancies/:vacancyId - Get a single job vacancy
-  app.get("/api/job-vacancies/:vacancyId", async (req: Request, res: Response) => {
-    try {
-      const { vacancyId } = req.params;
-      const db = getDatabase();
-
-      const vacancy = await db.select().from(jobVacanciesTable).where(eq(jobVacanciesTable.id, vacancyId));
-
-      if (!vacancy || vacancy.length === 0) {
-        return res.status(404).json({ error: "Job vacancy not found" });
-      }
-
-      res.json(vacancy[0]);
-    } catch (error) {
-      sendError(res, error);
-    }
-  });
-
-  // PUT /api/job-vacancies/:vacancyId - Update a job vacancy
-  app.put("/api/job-vacancies/:vacancyId", async (req: Request, res: Response) => {
-    try {
-      const { vacancyId } = req.params;
-      const { jobVacancyCreateSchema } = await import("@shared/schema");
-      
-      console.log('Update vacancy request:', { vacancyId, body: req.body });
-      
-
-      const payload = jobVacancyCreateSchema.parse(req.body);
-      const db = getDatabase();
-
-      const result = await db.update(jobVacanciesTable).set({
-        establishmentName: payload.establishmentName,
-        positionTitle: payload.positionTitle,
-        industryCodes: JSON.stringify(payload.industryCodes),
-        minimumEducationRequired: payload.minimumEducationRequired,
-        mainSkillOrSpecialization: payload.mainSkillOrSpecialization,
-        yearsOfExperienceRequired: payload.yearsOfExperienceRequired,
-        agePreference: payload.agePreference,
-        startingSalaryOrWage: payload.startingSalaryOrWage,
-        vacantPositions: payload.vacantPositions,
-        paidEmployees: payload.paidEmployees,
-        jobStatus: payload.jobStatus,
-        preparedByName: payload.preparedByName,
-        preparedByDesignation: payload.preparedByDesignation,
-        preparedByContact: payload.preparedByContact,
-        dateAccomplished: payload.dateAccomplished,
-        updatedAt: new Date(),
-      }).where(eq(jobVacanciesTable.id, vacancyId)).returning();
-
-      console.log('Update result:', result);
-
-      if (!result || result.length === 0) {
-        return res.status(404).json({ error: "Job vacancy not found" });
-      }
-
-      res.json({
-        success: true,
-        message: "Job vacancy updated successfully",
-        vacancy: result[0],
-      });
-    } catch (error: any) {
-      console.error('Update vacancy error:', error);
-      
-      // Better error response
-      if (error.name === 'ZodError') {
-        return res.status(400).json({ 
-          error: 'Validation error',
-          message: error.errors?.[0]?.message || 'Invalid data provided',
-          details: error.errors
-        });
-      }
-      
-      res.status(500).json({ 
-        error: error.message || 'Failed to update vacancy',
-        message: error.message || 'Failed to update vacancy'
-      });
-    }
-  });
-
-  // DELETE /api/job-vacancies/:vacancyId - Permanently delete a job vacancy
-  app.delete("/api/job-vacancies/:vacancyId", async (req: Request, res: Response) => {
-    try {
-      const { vacancyId } = req.params;
-      const db = getDatabase();
-
-      const result = await db.delete(jobVacanciesTable).where(eq(jobVacanciesTable.id, vacancyId));
-
-      if (!result || result.changes === 0) {
-        return res.status(404).json({ error: "Job vacancy not found" });
-      }
-
-      res.json({
-        success: true,
-        message: "Job vacancy permanently deleted",
-      });
-    } catch (error) {
-      sendError(res, error);
-    }
-  });
-
-  // POST /api/jobseeker/register (legacy)
-  app.post("/api/jobseeker/register", async (req: Request, res: Response) => {
-    try {
-      const payload = jobseekerCreateSchema.parse(req.body);
-      const hash = await hashPassword(payload.password);
-      const created = await storage.addJobseeker({
-        name: payload.name,
-        email: payload.email,
-        role: payload.role,
-        passwordHash: hash,
-      });
-      const token = generateToken({
-        id: created.id,
-        email: created.email,
-        role: payload.role as any,
-        name: created.name,
-      });
-      res.json({ token, user: created, type: "jobseeker" });
-    } catch (error) {
-      return sendError(res, error);
-    }
-  });
-
-  // POST /api/employer/register (legacy)
-  app.post("/api/employer/register", async (req: Request, res: Response) => {
-    try {
-      const payload = employerCreateSchema.parse(req.body);
-      
-      const created = await storage.addEmployer({
-        id: `EMP-${Date.now()}`,
-        establishmentName: payload.establishmentName,
-        houseStreetVillage: payload.houseStreetVillage,
-        barangay: payload.barangay,
-        municipality: payload.municipality,
-        province: payload.province,
-        contactNumber: payload.contactNumber,
-        email: payload.email,
-        numberOfPaidEmployees: payload.numberOfPaidEmployees,
-        numberOfVacantPositions: payload.numberOfVacantPositions,
-        industryType: payload.industryType,
-        srsSubscriber: payload.srsSubscriber,
-        companyTIN: payload.companyTIN,
-        businessPermitNumber: payload.businessPermitNumber,
-        bir2303Number: payload.bir2303Number,
-        chairpersonName: payload.chairpersonName,
-        chairpersonContact: payload.chairpersonContact,
-        secretaryName: payload.secretaryName,
-        secretaryContact: payload.secretaryContact,
-        preparedByName: payload.preparedByName,
-        preparedByDesignation: payload.preparedByDesignation,
-        preparedByContact: payload.preparedByContact,
-        dateAccomplished: payload.dateAccomplished,
-        remarks: payload.remarks,
-        isManpowerAgency: payload.isManpowerAgency,
-        doleCertificationNumber: payload.doleCertificationNumber,
-      });
-
-      const token = generateToken({
-        id: created.id || `EMP-${Date.now()}`,
-        email: created.email || '',
-        role: "employer",
-        name: created.establishmentName,
-      });
-
-      res.json({
-        token,
-        user: {
-          id: created.id || `EMP-${Date.now()}`,
-          name: created.establishmentName,
-          email: created.email,
-        },
-        type: "employer",
-      });
-    } catch (error) {
-      return sendError(res, error);
-    }
-  });
-
-  // POST /api/admin/register (legacy)
-  app.post("/api/admin/register", async (req: Request, res: Response) => {
-    try {
-      const payload = adminCreateSchema.parse(req.body);
-      const hash = await hashPassword(payload.password);
-      const created = await storage.addAdmin({
-        name: payload.name,
-        email: payload.email,
-        passwordHash: hash,
-      });
-      const token = generateToken({
-        id: created.id,
-        email: created.email,
-        role: "admin",
-        name: created.name,
-      });
-      res.json({ token, user: created, type: "admin" });
-    } catch (error) {
-      return sendError(res, error);
-    }
-  });
-
-  // POST /api/admin/login (legacy)
-  app.post("/api/admin/login", async (req: Request, res: Response) => {
-    try {
-      const payload = loginSchema.parse(req.body);
-      
-      // Use db-helpers function for admin authentication
-      const admin = await getAdminByEmailWithPassword(payload.email);
-      
-      if (!admin) {
-        return res.status(401).json({ code: "INVALID_CREDENTIALS", message: "Invalid credentials" });
-      }
-
-      // Check if password hash exists
-      const passwordHash = admin.passwordHash || admin.password;
-      if (!passwordHash) {
-        return res.status(401).json({ code: "INVALID_CREDENTIALS", message: "Invalid credentials" });
-      }
-      
-      const isValid = await verifyPassword(payload.password, passwordHash);
-      if (!isValid) {
-        return res.status(401).json({ code: "INVALID_CREDENTIALS", message: "Invalid credentials" });
-      }
-      
-      const token = generateToken({
-        id: admin.id,
-        email: admin.email,
-        role: admin.role || "admin",
-        name: admin.name,
-      });
-      
-      return res.json({
-        token,
-        user: {
-          id: admin.id,
-          name: admin.name,
-          email: admin.email,
-          role: admin.role || "admin",
-        },
-        type: "admin",
-      });
-    } catch (error) {
-      console.error("[LOGIN_ERROR]", error);
-      return res.status(500).json({ code: "INTERNAL_SERVER_ERROR", message: "Server error" });
-    }
-  });
-
-  // POST /api/admin/request-access
-  app.post("/api/admin/request-access", async (req: Request, res: Response) => {
-    try {
-      const { name, email, phone, organization } = req.body;
-      
-      // Validate required fields
-      if (!name || !email || !phone || !organization) {
-        return res.status(400).json({ error: "All fields are required" });
-      }
-      
-      // Save the access request
-      const request = await (storage as any).addAdminAccessRequest({
-        name,
-        email,
-        phone,
-        organization,
-      });
-      
-      res.json({
-        success: true,
-        message: "Admin access request submitted successfully",
-        requestId: request.id,
-      });
-    } catch (error) {
-      return sendError(res, error);
-    }
-  });
-
-  // GET /api/admin/access-requests (admin only - to view pending requests)
-  app.get("/api/admin/access-requests", authMiddleware, adminOnly, async (req: any, res) => {
-    try {
-      const requests = await (storage as any).getAdminAccessRequests();
-      res.json(requests);
-    } catch (error) {
-      return sendError(res, error);
-    }
-  });
-
-  // POST /api/admin/access-requests/:id/approve (admin only)
-  app.post("/api/admin/access-requests/:id/approve", authMiddleware, adminOnly, async (req: any, res) => {
-    try {
-      const { id } = req.params;
-      const requests = await (storage as any).getAdminAccessRequests();
-      const request = requests.find((r: any) => r.id === id);
-      
-      if (!request) {
-        return res.status(404).json({ error: "Request not found" });
-      }
-      
-      // Update request status
-      await (storage as any).updateAdminAccessRequest(id, { status: "approved" });
-      
-      res.json({
-        success: true,
-        message: "Access request approved",
-      });
-    } catch (error) {
-      return sendError(res, error);
-    }
-  });
-
-  // POST /api/admin/access-requests/:id/reject (admin only)
-  app.post("/api/admin/access-requests/:id/reject", authMiddleware, adminOnly, async (req: any, res) => {
-    try {
-      const { id } = req.params;
-      const requests = await (storage as any).getAdminAccessRequests();
-      const request = requests.find((r: any) => r.id === id);
-      
-      if (!request) {
-        return res.status(404).json({ error: "Request not found" });
-      }
-      
-      // Update request status
-      await (storage as any).updateAdminAccessRequest(id, { status: "rejected" });
-      
-      res.json({
-        success: true,
-        message: "Access request rejected",
-      });
-    } catch (error) {
-      return sendError(res, error);
-    }
-  });
-
-  // POST /api/admin/create-admin-user (admin only - create admin account from access request)
-  app.post("/api/admin/create-admin-user", authMiddleware, adminOnly, async (req: any, res) => {
-    try {
-      const { username, email, password, requestId, role } = req.body;
-      
-      // Validation
-      if (!email || !password) {
-        return sendValidationError(res, "Email and password are required");
-      }
-
-      if (!validateEmail(email)) {
-        return sendValidationError(res, "Invalid email format", "email");
-      }
-
-      if (!validatePassword(password)) {
-        return sendValidationError(res, "Password must be at least 8 characters", "password");
-      }
-
-      // Check if admin already exists
-      const db = getDatabase();
-      if (db) {
-        try {
-          const existingAdmin = await db.query.adminsTable.findFirst({
-            where: (table: any, { eq }: any) => eq(table.email, email),
-          });
-
-          if (existingAdmin) {
-            return sendValidationError(res, "Email already exists", "email");
-          }
-        } catch (dbErr: any) {
-          console.error("Error checking existing admin:", dbErr);
-          // Table might not exist yet, continue
-        }
-      }
-
-      // Hash password
-      const hashedPassword = await hashPassword(password);
-      const adminName = username || email.split("@")[0];
-
-      // Create admin user in database
-      if (db) {
-        try {
-          const result = await db.insert(adminsTable).values({
-            name: adminName,
-            email,
-            passwordHash: hashedPassword,
-            role: "admin",
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          }).returning();
-
-          console.log("Admin created successfully:", result[0]?.id);
-
-          // Update access request if provided
-          if (requestId) {
-            try {
-              await (storage as any).updateAdminAccessRequest(requestId, {
-                status: "approved",
-              });
-              console.log("Access request updated:", requestId);
-            } catch (reqErr: any) {
-              console.error("Error updating access request:", reqErr);
-              // Continue anyway - admin was created
-            }
-          }
-
-          res.json({
-            success: true,
-            message: "Admin user created successfully",
-            admin: {
-              id: result[0]?.id,
-              name: result[0]?.name,
-              email: result[0]?.email,
-              role: "admin",
-            },
-          });
-        } catch (insertErr: any) {
-          console.error("Error inserting admin:", insertErr);
-          return res.status(400).json({
-            error: "Failed to create admin user",
-            details: insertErr?.message || "Database insert failed",
-          });
-        }
-      } else {
-        return sendError(res, new Error("Database not initialized"));
-      }
-    } catch (error: any) {
-      console.error("Create admin user error:", error);
-      return sendError(res, error);
-    }
-  });
-
-  // GET /api/jobs/:id/applicants (legacy)
-  app.get("/api/jobs/:id/applicants", async (req: any, res) => {
-    try {
-      if (!req.user || req.user.role !== "employer") {
-        return res.status(403).json(
-          createErrorResponse(ErrorCodes.FORBIDDEN, "Forbidden")
-        );
-      }
-
-      const jobId = req.params.id;
-      const jobs = await storage.getJobPosts();
-      const job = jobs.find((j) => j.id === jobId);
-
-      if (!job) {
-        return res.status(404).json(
-          createErrorResponse(
-            ErrorCodes.RESOURCE_NOT_FOUND,
-            "Job not found"
-          )
-        );
-      }
-
-      if (job.employerId !== req.user.id) {
-        return res.status(403).json(
-          createErrorResponse(ErrorCodes.FORBIDDEN, "Not allowed")
-        );
-      }
-
-      const apps = await storage.getApplicantsForJob(jobId);
-      res.json(apps);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch applicants" });
-    }
-  });
-
-  // POST /api/referrals - Create referral from applicant and vacancy
-  app.post("/api/referrals", async (req: Request, res: Response) => {
-    try {
-      const { applicantId, vacancyId, employerId, status, feedback } = req.body;
-
-      if (!applicantId || !vacancyId || !employerId) {
-        return res.status(400).json({
-          success: false,
-          message: "applicantId, vacancyId, and employerId are required",
-        });
-      }
-
-      try {
-        const db = getDatabase();
-
-        // Get applicant
-        const applicant = await db
-          .select()
-          .from(applicantsTable)
-          .where(eq(applicantsTable.id, applicantId))
-          .limit(1);
-
-        if (!applicant.length) {
-          return res.status(404).json({
-            success: false,
-            message: "Applicant not found",
-          });
-        }
-
-        // Get vacancy
-        const vacancy = await db
-          .select()
-          .from(jobVacanciesTable)
-          .where(eq(jobVacanciesTable.id, vacancyId))
-          .limit(1);
-
-        if (!vacancy.length) {
-          return res.status(404).json({
-            success: false,
-            message: "Vacancy not found",
-          });
-        }
-
-        // Create application/referral record
-        const referralId = `RFL-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, "0")}`;
-
-        const result = await db
-          .insert(applicationsTable)
-          .values({
-            id: referralId,
-            applicantId: applicantId,
-            applicantName: `${applicant[0].firstName} ${applicant[0].surname}`,
-            jobId: vacancyId,
-            employerId: employerId,
-            status: status || "Pending",
-            feedback: feedback || null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          })
-          .returning();
-
-        res.status(201).json({
-          success: true,
-          message: "Referral created successfully",
-          referral: {
-            id: result[0].id,
-            applicant: result[0].applicantName,
-            vacancy: vacancy[0].positionTitle,
-            employer: vacancy[0].establishmentName,
-            barangay: applicant[0].barangay,
-            status: result[0].status,
-            dateReferred: result[0].createdAt,
-          },
-        });
-      } catch (dbError: any) {
-        console.error("Database error:", dbError);
-        res.status(500).json({
-          success: false,
-          message: "Failed to create referral",
-          error: dbError.message,
-        });
-      }
-    } catch (error: any) {
-      console.error("Request error:", error);
-      sendError(res, error);
-    }
-  });
-
-  // PATCH /api/referrals/:id/status - Update referral status
-  app.patch("/api/referrals/:id/status", async (req: Request, res: Response) => {
-    try {
-      const { id } = req.params;
-      const { status, feedback } = req.body;
-
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: "Referral ID is required",
-        });
-      }
-
-      if (!status) {
-        return res.status(400).json({
-          success: false,
-          message: "Status is required",
-        });
-      }
-
-      try {
-        const db = getDatabase();
-
-        // Update the application/referral
-        const result = await db
-          .update(applicationsTable)
-          .set({
-            status: status,
-            feedback: feedback || null,
-            updatedAt: new Date(),
-          })
-          .where(eq(applicationsTable.id, id))
-          .returning();
-
-        if (!result.length) {
-          return res.status(404).json({
-            success: false,
-            message: "Referral not found",
-          });
-        }
-
-        res.status(200).json({
-          success: true,
-          message: "Referral status updated successfully",
-          referral: result[0],
-        });
-      } catch (dbError: any) {
-        console.error("Database error:", dbError);
-        res.status(500).json({
-          success: false,
-          message: "Failed to update referral status",
-          error: dbError.message,
-        });
-      }
-    } catch (error: any) {
-      console.error("Request error:", error);
-      sendError(res, error);
-    }
-  });
-
-  // DELETE /api/referrals/:id - Delete a referral (alpha testing)
-  app.delete("/api/referrals/:id", async (req: Request, res: Response) => {
-    try {
-      const { id } = req.params;
-
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: "Referral ID is required",
-        });
-      }
-
-      try {
-        const db = getDatabase();
-        console.log("[DELETE /api/referrals] Attempting to delete referral with ID:", id);
-
-        // Try deleting from referralsTable first using referralId as primary key
-        let result = await db
-          .delete(referralsTable)
-          .where(eq(referralsTable.referralId, id))
-          .returning();
-
-        console.log("[DELETE /api/referrals] Referrals table result:", result);
-
-        // If not found in referralsTable, try applicationsTable
-        if (!result.length) {
-          console.log("[DELETE /api/referrals] Not found in referralsTable, trying applicationsTable");
-          result = await db
-            .delete(applicationsTable)
-            .where(eq(applicationsTable.id, id))
-            .returning();
-          console.log("[DELETE /api/referrals] Applications table result:", result);
-        }
-
-        if (!result.length) {
-          console.log("[DELETE /api/referrals] Referral not found in any table");
-          return res.status(404).json({
-            success: false,
-            message: "Referral not found",
-          });
-        }
-
-        console.log("[DELETE /api/referrals] Successfully deleted referral");
-        res.status(200).json({
-          success: true,
-          message: "Referral deleted successfully",
-        });
-      } catch (dbError: any) {
-        console.error("Database error:", dbError);
-        res.status(500).json({
-          success: false,
-          message: "Failed to delete referral",
-          error: dbError.message,
-        });
-      }
-    } catch (error: any) {
-      console.error("Request error:", error);
-      sendError(res, error);
-    }
-  });
-
-  // POST /api/referral-slip - Save referral slip information
-  app.post("/api/referral-slip", async (req: Request, res: Response) => {
-    try {
-      const {
-        applicantId,
-        vacancyId,
-        employerId,
-        referralSlipNumber,
-        pesoOfficerName,
-        pesoOfficerDesignation,
-      } = req.body;
-
-      if (!applicantId || !referralSlipNumber || !vacancyId || !employerId) {
-        return res.status(400).json({
-          success: false,
-          message: "applicantId, vacancyId, employerId, and referralSlipNumber are required",
-        });
-      }
-
-      try {
-        const db = getDatabase();
-
-        // Get applicant
-        const applicant = await db
-          .select()
-          .from(applicantsTable)
-          .where(eq(applicantsTable.id, applicantId))
-          .limit(1);
-
-        if (!applicant.length) {
-          return res.status(404).json({
-            success: false,
-            message: "Applicant not found",
-          });
-        }
-
-        // Get vacancy
-        const vacancy = await db
-          .select()
-          .from(jobVacanciesTable)
-          .where(eq(jobVacanciesTable.id, vacancyId))
-          .limit(1);
-
-        if (!vacancy.length) {
-          return res.status(404).json({
-            success: false,
-            message: "Vacancy not found",
-          });
-        }
-
-        // Create referral record with slip tracking
-        const result = await db
-          .insert(referralsTable)
-          .values({
-            applicantId: applicantId,
-            applicant: `${applicant[0].firstName} ${applicant[0].surname}`,
-            employerId: employerId,
-            employer: vacancy[0].establishmentName,
-            vacancyId: vacancyId,
-            vacancy: vacancy[0].positionTitle,
-            barangay: applicant[0].barangay,
-            jobCategory: vacancy[0].mainSkillOrSpecialization,
-            dateReferred: new Date().toISOString().split("T")[0],
-            status: "pending",
-            referralSlipNumber: referralSlipNumber,
-            pesoOfficerName: pesoOfficerName || "PESO Officer",
-            pesoOfficerDesignation: pesoOfficerDesignation || "PESO Officer",
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          })
-          .returning();
-
-        res.status(201).json({
-          success: true,
-          message: "Referral slip saved successfully",
-          data: result[0],
-        });
-      } catch (dbError: any) {
-        console.error("Database error:", dbError);
-        
-        // Check if it's a unique constraint error for referral slip number
-        if (dbError.message?.includes("unique") || dbError.code === "UNIQUE") {
-          return res.status(409).json({
-            success: false,
-            message: "This referral slip number already exists",
-            error: dbError.message,
-          });
-        }
-
-        res.status(500).json({
-          success: false,
-          message: "Failed to save referral slip",
-          error: dbError.message,
-        });
-      }
-    } catch (error: any) {
-      console.error("Request error:", error);
-      sendError(res, error);
-    }
-  });
-
-  // ============ ENHANCED PROFILE & USER MANAGEMENT ROUTES ============
-
-  // GET /api/profile - Get current user's profile
-  app.get("/api/profile", authMiddleware, async (req: any, res: Response) => {
-    try {
-      const userId = req.user.id;
-      const role = req.user.role;
-      const db = getDatabase();
-
-      if (role === "admin") {
-        const admin = await db.query.adminsTable.findFirst({
-          where: (table: any) => eq(table.id, userId),
-        });
-        if (!admin) return res.status(404).json({ error: "Admin not found" });
-        return res.json({
-          id: admin.id,
-          name: admin.name,
-          email: admin.email,
-          role: admin.role,
-          createdAt: admin.createdAt,
-          updatedAt: admin.updatedAt,
-        });
-      }
-
-      if (role === "employer") {
-        const employer = await db.query.employersTable.findFirst({
-          where: (table: any) => eq(table.id, userId),
-        });
-        if (!employer) return res.status(404).json({ error: "Employer not found" });
-        return res.json({
-          id: employer.id,
-          name: employer.establishmentName,
-          email: employer.email,
-          role: "employer",
-          company: employer.establishmentName,
-          createdAt: employer.createdAt,
-          updatedAt: employer.updatedAt,
-        });
-      }
-
-      if (role === "jobseeker" || role === "freelancer") {
-        const applicant = await db.query.applicantsTable.findFirst({
-          where: (table: any) => eq(table.id, userId),
-        });
-        if (!applicant) return res.status(404).json({ error: "User not found" });
-        return res.json({
-          id: applicant.id,
-          name: `${applicant.firstName} ${applicant.surname}`,
-          email: applicant.email,
-          role: applicant.role,
-          createdAt: applicant.createdAt,
-          updatedAt: applicant.updatedAt,
-        });
-      }
-
-      return res.status(400).json({ error: "Invalid user role" });
-    } catch (error) {
-      return sendError(res, error);
-    }
-  });
-
-  // PUT /api/profile - Update current user's profile
-  app.put("/api/profile", authMiddleware, async (req: any, res: Response) => {
-    try {
-      const userId = req.user.id;
-      const role = req.user.role;
-      const db = getDatabase();
-      const now = new Date();
-
-      if (role === "employer") {
-        const updateData = req.body;
-        await db
-          .update(employersTable)
-          .set({
-            establishmentName: updateData.company || updateData.name,
-            email: updateData.email,
-            updatedAt: now,
-          })
-          .where(eq(employersTable.id, userId));
-
-        return res.json({ message: "Profile updated successfully" });
-      }
-
-      if (role === "jobseeker" || role === "freelancer") {
-        const updateData = req.body;
-        await db
-          .update(applicantsTable)
-          .set({
-            firstName: updateData.firstName,
-            surname: updateData.surname,
-            email: updateData.email,
-            updatedAt: now,
-          })
-          .where(eq(applicantsTable.id, userId));
-
-        return res.json({ message: "Profile updated successfully" });
-      }
-
-      return res.status(400).json({ error: "Cannot update this profile type" });
-    } catch (error) {
-      return sendError(res, error);
-    }
-  });
-
-  // ============ JOBSEEKER APPLICATION ROUTES ============
-
-  // POST /api/jobseeker/applications - Apply to a job
-  app.post("/api/jobseeker/applications", authMiddleware, async (req: any, res: Response) => {
-    try {
-      if (req.user.role !== "jobseeker" && req.user.role !== "freelancer") {
-        return res.status(403).json({ error: "Only jobseekers can apply to jobs" });
-      }
-
-      const { jobId, coverLetter } = req.body;
-      if (!jobId) {
-        return res.status(400).json({ error: "Job ID is required" });
-      }
-
-      const db = getDatabase();
-      const now = new Date();
-
-      // Check if already applied
-      const existingApp = await db.query.applicationsTable.findFirst({
-        where: (table: any) => 
-          eq(table.jobId, jobId) && eq(table.applicantId, req.user.id),
-      });
-
-      if (existingApp) {
-        return res.status(400).json({ error: "You have already applied to this job" });
-      }
-
-      const result = await db
-        .insert(applicationsTable)
-        .values({
-          jobId,
-          applicantId: req.user.id,
-          applicantName: req.user.name,
-          status: "pending",
-          coverLetter: coverLetter || "",
-          createdAt: now,
-        })
-        .returning();
-
-      return res.status(201).json({
-        message: "Application submitted successfully",
-        application: result[0],
-      });
-    } catch (error) {
-      return sendError(res, error);
-    }
-  });
-
   // GET /api/jobseeker/applications - Get jobseeker's applications
   app.get("/api/jobseeker/applications", authMiddleware, async (req: any, res: Response) => {
     try {
@@ -4265,9 +2352,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/admin/applicants - Get all NSRP applicants with filtering
-  app.get("/api/admin/applicants", authMiddleware, adminOnly, async (req: Request, res: Response) => {
+  app.get("/api/admin/applicants", authMiddleware, async (req: Request, res: Response) => {
     try {
-      const { employmentStatus, barangay, search, limit = "20", offset = "0" } = req.query;
+      const { employmentStatus, barangay, employmentType, search, registeredFrom, registeredTo, sortBy = "createdAt", sortOrder = "desc", limit = "20", offset = "0" } = req.query;
 
       const db = getDatabase();
       let applicants = await db.query.applicantsTable.findMany();
@@ -4281,6 +2368,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         applicants = applicants.filter((a: any) => a.barangay === barangay);
       }
 
+      if (employmentType) {
+        applicants = applicants.filter((a: any) => a.employmentType === employmentType);
+      }
+
+      if (registeredFrom || registeredTo) {
+        applicants = applicants.filter((a: any) => {
+          if (!a.createdAt) return false;
+          const created = new Date(a.createdAt);
+          if (registeredFrom && created < new Date(registeredFrom as string)) return false;
+          if (registeredTo && created > new Date(registeredTo as string)) return false;
+          return true;
+        });
+      }
+
       if (search) {
         const searchLower = (search as string).toLowerCase();
         applicants = applicants.filter((a: any) =>
@@ -4291,6 +2392,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Apply pagination
+      // Sort applicants
+      if (sortBy) {
+        applicants = applicants.sort((a: any, b: any) => {
+          let aValue = a[sortBy];
+          let bValue = b[sortBy];
+          // If sorting by date, convert to Date
+          if (sortBy.toLowerCase().includes('date') || sortBy === 'createdAt') {
+            aValue = aValue ? new Date(aValue) : new Date(0);
+            bValue = bValue ? new Date(bValue) : new Date(0);
+          }
+          if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
+          if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
+          return 0;
+        });
+      }
+
       const limitNum = parseInt(limit as string);
       const offsetNum = parseInt(offset as string);
       const paginatedApplicants = applicants.slice(offsetNum, offsetNum + limitNum);
@@ -4307,7 +2424,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/admin/employers - Get all employers with filtering
-  app.get("/api/admin/employers", authMiddleware, adminOnly, async (req: Request, res: Response) => {
+  app.get("/api/admin/employers", authMiddleware, async (req: Request, res: Response) => {
     try {
       const { industryType, municipality, search, limit = "20", offset = "0" } = req.query;
 

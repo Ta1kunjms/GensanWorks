@@ -133,6 +133,40 @@ export const notesFiltersSchema = z.object({
 export type Note = z.infer<typeof noteSchema>;
 export type NotesFilters = z.infer<typeof notesFiltersSchema>;
 
+// Auth provider settings (Zod-first contract)
+
+// Discriminated union for auth providers
+export const googleProviderSchema = z.object({
+  id: z.literal("google"),
+  enabled: z.boolean().default(false),
+  config: z.object({
+    clientId: z.string().optional(),
+    clientSecret: z.string().optional(),
+    callbackUrl: z.string().optional(),
+  }).default({}),
+});
+
+export const customProviderSchema = z.object({
+  id: z.literal("custom"),
+  enabled: z.boolean().default(false),
+  config: z.object({
+    displayName: z.string().optional(),
+    issuer: z.string().optional(),
+    clientId: z.string().optional(),
+  }).default({}),
+});
+
+export const authProviderSchema = z.discriminatedUnion("id", [googleProviderSchema, customProviderSchema]);
+
+export const authSettingsSchema = z.object({
+  providers: z.array(authProviderSchema).default([]),
+});
+
+export type GoogleProvider = z.infer<typeof googleProviderSchema>;
+export type CustomProvider = z.infer<typeof customProviderSchema>;
+export type AuthProvider = z.infer<typeof authProviderSchema>;
+export type AuthSettings = z.infer<typeof authSettingsSchema>;
+
 // Jobseeker & Employer schemas
 export const jobseekerSchema = z.object({
   id: z.string(),

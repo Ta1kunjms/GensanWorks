@@ -26,8 +26,12 @@ import AdminArchivedEmployers from "@/pages/admin/protected/archived-employers";
 import AdminMatching from "@/pages/admin/protected/matching";
 import AdminSettings from "@/pages/admin/protected/settings";
 import AdminHelp from "@/pages/admin/protected/help";
+import AdminAuthSettingsPage from "@/pages/admin/auth-settings";
 import AdminAccessRequests from "@/pages/admin/protected/access-requests";
 import JobMatchingPage from "@/pages/admin/protected/job-matching";
+import UseCaseDiagram from "@/pages/admin/use-case-diagram";
+import UseCaseDiagramJobseeker from "@/pages/admin/use-case-diagram-jobseeker";
+import UseCaseDiagramEmployer from "@/pages/admin/use-case-diagram-employer";
 
 // Employer Pages
 import EmployerLogin from "@/pages/employer/login";
@@ -44,6 +48,16 @@ import JobseekerDashboard from "@/pages/jobseeker/dashboard";
 import JobseekerJobs from "@/pages/jobseeker/jobs";
 import JobseekerApplications from "@/pages/jobseeker/applications";
 import JobseekerProfile from "@/pages/jobseeker/profile";
+import JobseekerUseCases from "@/pages/jobseeker/use-case-descriptions";
+import EmployerUseCases from "@/pages/employer/use-case-descriptions";
+// Public info pages
+import AccessibilityStatement from "@/pages/accessibility";
+import PESOHelpdesk from "@/pages/helpdesk";
+import AboutPESO from "@/pages/about-peso";
+import HelpSupport from "@/pages/help-support";
+import PrivacyPolicy from "@/pages/privacy";
+import ContactInformation from "@/pages/contact";
+import OAuthCallbackPage from "@/pages/oauth-callback";
 
 export default function App() {
   const style = {
@@ -81,6 +95,16 @@ function InnerApp() {
         <Switch>
           {/* Landing Page */}
           <Route path="/" component={Landing} />
+
+          {/* Public Info Pages */}
+          <Route path="/accessibility" component={AccessibilityStatement} />
+          <Route path="/helpdesk" component={PESOHelpdesk} />
+          <Route path="/about" component={AboutPESO} />
+          <Route path="/help" component={HelpSupport} />
+          <Route path="/privacy" component={PrivacyPolicy} />
+          <Route path="/contact" component={ContactInformation} />
+          {/* OAuth callback */}
+          <Route path="/oauth/callback" component={OAuthCallbackPage} />
 
           {/* Admin Login */}
           <Route path="/admin/login" component={AdminLogin} />
@@ -125,7 +149,13 @@ function InnerApp() {
               <Route path="/admin/employers" component={AdminEmployers} />
               <Route path="/admin/matching" component={AdminMatching} />
               <Route path="/admin/settings" component={AdminSettings} />
+              <Route path="/admin/settings/auth" component={AdminAuthSettingsPage} />
               <Route path="/admin/help" component={AdminHelp} />
+              <Route path="/admin/use-case-diagram" component={UseCaseDiagram} />
+              <Route path="/admin/use-case-diagram/jobseeker" component={UseCaseDiagramJobseeker} />
+              <Route path="/admin/use-case-diagram/employer" component={UseCaseDiagramEmployer} />
+              <Route path="/admin/use-cases/jobseeker" component={JobseekerUseCases} />
+              <Route path="/admin/use-cases/employer" component={EmployerUseCases} />
               {/* Redirect root to admin dashboard */}
               <Route path="/" component={AdminDashboard} />
               <Route component={NotFound} />

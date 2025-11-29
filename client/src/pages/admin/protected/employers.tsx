@@ -4,6 +4,7 @@
  * Only accessible to users with role='admin'
  */
 import { useState, useEffect } from "react";
+import { authFetch } from '@/lib/auth';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -45,10 +46,17 @@ export default function AdminEmployersPage() {
   const fetchEmployers = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/employers");
+      const res = await authFetch("/api/admin/employers?limit=10000");
       if (!res.ok) throw new Error("Failed to fetch employers");
       const data = await res.json();
-      setEmployers(data || []);
+      // If API returns { employers: [...] }, use that, else fallback to data as array
+      if (Array.isArray(data)) {
+        setEmployers(data);
+      } else if (data && Array.isArray(data.employers)) {
+        setEmployers(data.employers);
+      } else {
+        setEmployers([]);
+      }
     } catch (error: any) {
       toast({
         title: "Error",

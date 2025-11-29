@@ -1,3 +1,4 @@
+import AdminAuthSettingsPage from "@/pages/admin/auth-settings";
 /**
  * Admin Settings Page - Comprehensive Configuration
  * Route: /admin/settings
@@ -133,9 +134,9 @@ export default function AdminSettingsPage() {
                 <Lock className="w-4 h-4" />
                 <span className="hidden sm:inline">Security</span>
               </TabsTrigger>
-              <TabsTrigger value="api" className="flex items-center gap-2">
+              <TabsTrigger value="auth" className="flex items-center gap-2">
                 <Key className="w-4 h-4" />
-                <span className="hidden sm:inline">API</span>
+                <span className="hidden sm:inline">Auth</span>
               </TabsTrigger>
               <TabsTrigger value="maintenance" className="flex items-center gap-2">
                 <Database className="w-4 h-4" />
@@ -217,91 +218,35 @@ export default function AdminSettingsPage() {
             <TabsContent value="notifications" className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Notification Preferences</CardTitle>
-                  <CardDescription>Control which notifications you receive</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {[
-                    { id: "emailNotifications", label: "Email Notifications", desc: "Receive updates via email" },
-                    { id: "applicantNotifications", label: "Applicant Updates", desc: "New applicant registrations" },
-                    { id: "employerNotifications", label: "Employer Updates", desc: "Employer activities" },
-                    { id: "referralNotifications", label: "Referral Updates", desc: "Referral status changes" },
-                    { id: "feedbackNotifications", label: "Feedback Notifications", desc: "Employer feedback" },
-                    { id: "systemAlerts", label: "System Alerts", desc: "Critical system notifications" },
-                  ].map((setting) => (
-                    <div key={setting.id} className="flex items-center justify-between p-3 border border-slate-200 dark:border-slate-700 rounded-lg">
-                      <div>
-                        <p className="font-medium text-slate-900 dark:text-white">{setting.label}</p>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">{setting.desc}</p>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={notifications[setting.id as keyof typeof notifications]}
-                        onChange={(e) =>
-                          setNotifications({
-                            ...notifications,
-                            [setting.id]: e.target.checked,
-                          })
-                        }
-                        className="w-5 h-5 rounded cursor-pointer"
-                      />
-                    </div>
-                  ))}
-                  <Button onClick={handleNotificationSave} className="flex items-center gap-2">
-                    <Save className="w-4 h-4" />
-                    Save Preferences
-                  </Button>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* SECURITY */}
-            <TabsContent value="security" className="space-y-6">
-              <Card>
-                <CardHeader>
                   <CardTitle>Security Settings</CardTitle>
-                  <CardDescription>Manage account security and access</CardDescription>
+                  <CardDescription>Password, 2FA, sessions</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {/* Change Password */}
-                  <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-slate-900 dark:text-white">
-                      <Lock className="w-5 h-5" />
-                      Change Password
-                    </h3>
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="currentPass">Current Password</Label>
-                        <div className="relative">
-                          <Input
-                            id="currentPass"
-                            type={showPassword ? "text" : "password"}
-                            placeholder="••••••••"
-                          />
-                          <button
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2"
-                          >
-                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="newPass">New Password</Label>
-                          <Input id="newPass" type="password" placeholder="••••••••" />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="confirmPass">Confirm Password</Label>
-                          <Input id="confirmPass" type="password" placeholder="••••••••" />
-                        </div>
-                      </div>
-                      <Button className="flex items-center gap-2">
-                        <Key className="w-4 h-4" />
-                        Update Password
-                      </Button>
-                    </div>
+              {/* Change Password */}
+              <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
+                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-slate-900 dark:text-white">
+                  <Lock className="w-5 h-5" />
+                  Change Password
+                </h3>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="currentPass">Current Password</Label>
+                    <Input id="currentPass" type={showPassword ? "text" : "password"} placeholder="••••••••" />
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="newPass">New Password</Label>
+                    <Input id="newPass" type={showPassword ? "text" : "password"} placeholder="••••••••" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPass">Confirm New Password</Label>
+                    <Input id="confirmPass" type={showPassword ? "text" : "password"} placeholder="••••••••" />
+                  </div>
+                  <Button className="flex items-center gap-2">
+                    <Key className="w-4 h-4" />
+                    Update Password
+                  </Button>
+                </div>
+              </div>
 
                   {/* Two Factor Authentication */}
                   <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
@@ -368,77 +313,15 @@ export default function AdminSettingsPage() {
               </Card>
             </TabsContent>
 
-            {/* API SETTINGS */}
-            <TabsContent value="api" className="space-y-6">
+            {/* AUTH SETTINGS */}
+            <TabsContent value="auth" className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>API Configuration</CardTitle>
-                  <CardDescription>Manage API keys and integrations</CardDescription>
+                  <CardTitle>Authentication</CardTitle>
+                  <CardDescription>Manage sign-in providers</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {/* API Key */}
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4 text-slate-900 dark:text-white">API Key</h3>
-                    <div className="flex gap-2">
-                      <Input
-                        type={showApiKey ? "text" : "password"}
-                        value={apiKey}
-                        readOnly
-                        className="font-mono text-sm"
-                      />
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowApiKey(!showApiKey)}
-                        className="flex items-center gap-2"
-                      >
-                        {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </Button>
-                      <Button onClick={handleCopyApiKey} className="flex items-center gap-2">
-                        <Copy className="w-4 h-4" />
-                      </Button>
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                      Use this key to authenticate API requests
-                    </p>
-                  </div>
-
-                  {/* Webhooks */}
-                  <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
-                    <h3 className="text-lg font-semibold mb-4 text-slate-900 dark:text-white">Webhooks</h3>
-                    <div className="space-y-3">
-                      <div className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
-                        <p className="font-medium text-slate-900 dark:text-white">Referral Events</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                          https://your-domain.com/webhooks/referral
-                        </p>
-                      </div>
-                      <div className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
-                        <p className="font-medium text-slate-900 dark:text-white">Applicant Events</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                          https://your-domain.com/webhooks/applicant
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Rate Limits */}
-                  <div className="border-t border-slate-200 dark:border-slate-700 pt-6">
-                    <h3 className="text-lg font-semibold mb-4 text-slate-900 dark:text-white">Rate Limits</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
-                        <p className="text-sm text-slate-600 dark:text-slate-400">Requests per minute</p>
-                        <p className="text-2xl font-bold text-slate-900 dark:text-white">60</p>
-                      </div>
-                      <div className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
-                        <p className="text-sm text-slate-600 dark:text-slate-400">Daily requests</p>
-                        <p className="text-2xl font-bold text-slate-900 dark:text-white">10,000</p>
-                      </div>
-                      <div className="p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
-                        <p className="text-sm text-slate-600 dark:text-slate-400">Current usage</p>
-                        <p className="text-2xl font-bold text-slate-900 dark:text-white">2,345</p>
-                      </div>
-                    </div>
-                  </div>
+                  <AdminAuthSettingsPage />
                 </CardContent>
               </Card>
             </TabsContent>

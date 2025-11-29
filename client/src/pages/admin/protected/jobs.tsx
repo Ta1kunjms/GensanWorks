@@ -12,6 +12,7 @@ import { Plus, Archive, Eye, Edit, Briefcase } from 'lucide-react';
 import { AddJobVacancyModal } from '@/components/add-job-vacancy-modal';
 import { ViewEditJobVacancyModal } from '@/components/view-edit-job-vacancy-modal';
 import { formatRelativeTime } from '@/lib/time-utils';
+import { authFetch } from '@/lib/auth';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,11 +43,18 @@ export default function AdminJobsPage() {
   const fetchVacancies = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/job-vacancies');
+      // Use authFetch to get all jobs from /api/admin/jobs
+      const res = await authFetch('/api/admin/jobs');
       if (!res.ok) throw new Error('Failed to fetch vacancies');
       const data = await res.json();
-      // API returns { vacancies: [], total, limit, offset }
-      setVacancies(data.vacancies || []);
+      // API may return array or { jobs: [] }
+      let jobs: any[] = [];
+      if (Array.isArray(data)) {
+        jobs = data;
+      } else if (data.jobs) {
+        jobs = data.jobs;
+      }
+      setVacancies(jobs);
     } catch (error: any) {
       toast({
         title: 'Error',
