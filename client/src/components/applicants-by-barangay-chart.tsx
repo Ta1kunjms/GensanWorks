@@ -22,8 +22,8 @@ export function ApplicantsByBarangayChart({ data }: ApplicantsByBarangayChartPro
   const maxValue = Math.max(
     ...data.employed,
     ...data.unemployed,
-    ...data.selfEmployed,
-    ...data.newEntrant
+    // ...data.selfEmployed, // Removed
+    // ...data.newEntrant // Removed
   );
   
   // Set y-axis max to 120% of the highest value (adds 20% buffer)
@@ -47,20 +47,6 @@ export function ApplicantsByBarangayChart({ data }: ApplicantsByBarangayChartPro
         borderRadius: 4,
         maxBarThickness: 20,
       },
-      {
-        label: "Self-Employed",
-        data: data.selfEmployed,
-        backgroundColor: "hsl(38 92% 50%)",
-        borderRadius: 4,
-        maxBarThickness: 20,
-      },
-      {
-        label: "New Entrant",
-        data: data.newEntrant,
-        backgroundColor: "hsl(215 92% 58%)",
-        borderRadius: 4,
-        maxBarThickness: 20,
-      },
     ],
   };
 
@@ -79,6 +65,7 @@ export function ApplicantsByBarangayChart({ data }: ApplicantsByBarangayChartPro
             family: "Inter, sans-serif",
             size: 12,
           },
+          filter: (legendItem: any) => legendItem.text !== 'undefined',
         },
       },
       title: {

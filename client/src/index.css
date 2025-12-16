@@ -170,6 +170,48 @@
 }
 
 @layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  /*
+   * Option B (proportional scaling):
+   * Tailwind spacing/font sizes are rem-based, so scaling the root font-size
+   * reduces vertical whitespace everywhere without changing layout structure.
+   */
+  html {
+    font-size: 16px;
+  }
+
+  /* Tablet: gently scale down */
+  @media (max-width: 1024px) {
+    html {
+      font-size: clamp(11px, 1.4vw, 15px);
+    }
+  }
+
+  /* Mobile: stronger scale down */
+  @media (max-width: 640px) {
+    html {
+      font-size: clamp(9px, 2.8vw, 12px);
+    }
+  }
+
+  /* Short screens: reduce a touch more to cut vertical scrolling */
+  @media (max-height: 720px) {
+    html {
+      font-size: clamp(9px, 1.8vh, 14px);
+    }
+  }
+
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   * {
     @apply border-border;
   }
@@ -288,5 +330,86 @@
   .border.active-elevate-2:not(.no-active-interaction-elevate)::after,
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
+  }
+
+  .brand-marquee {
+    min-width: max-content;
+    animation: brand-marquee 32s linear infinite;
+  }
+
+  .brand-marquee:hover {
+    animation-play-state: paused;
+  }
+
+  .hover-lift {
+    transition: transform 0.35s ease, box-shadow 0.35s ease;
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-6px) scale(1.01);
+    box-shadow: 0 20px 30px -18px rgba(15, 23, 42, 0.45);
+  }
+
+  .glow-pulse {
+    animation: glow-pulse 3.2s ease-in-out infinite;
+  }
+
+  .spin-slow {
+    animation: slow-spin 30s linear infinite;
+  }
+
+  .spin-slower {
+    animation: slow-spin 42s linear infinite reverse;
+  }
+
+  .animated-border {
+    position: relative;
+  }
+
+  .floating-spark {
+    animation: floating-spark 6s ease-in-out infinite;
+    opacity: 0.85;
+  }
+}
+
+@keyframes brand-marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 10px 30px rgba(59, 130, 246, 0.15);
+  }
+  50% {
+    box-shadow: 0 20px 45px rgba(59, 130, 246, 0.3);
+  }
+}
+
+@keyframes slow-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes floating-spark {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateY(-12px) scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.5;
   }
 }

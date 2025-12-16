@@ -3,16 +3,13 @@
  * Examples: "1 minute ago", "2 hours ago", "3 days ago", "11/20/2025"
  */
 
-export function formatRelativeTime(dateString: string | Date | null | undefined): string {
-  // Handle null or undefined
-  if (!dateString) {
+export function formatRelativeTime(dateString: string | Date | number | null | undefined): string {
+  if (dateString === null || dateString === undefined) {
     return 'unknown time';
   }
 
-  const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
-  
-  // Check if date is valid
-  if (isNaN(date.getTime())) {
+  const date = new Date(dateString as any);
+  if (Number.isNaN(date.getTime())) {
     return 'invalid date';
   }
 
@@ -55,8 +52,8 @@ export function formatRelativeTime(dateString: string | Date | null | undefined)
  * Get formatted date with time for display
  * Example: "Nov 24, 2025 at 3:45 PM"
  */
-export function formatDateWithTime(dateString: string | Date): string {
-  const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+export function formatDateWithTime(dateString: string | Date | number): string {
+  const date = new Date(dateString as any);
   return date.toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -71,8 +68,8 @@ export function formatDateWithTime(dateString: string | Date): string {
  * Get just the date without time
  * Example: "Nov 24, 2025"
  */
-export function formatDateOnly(dateString: string | Date): string {
-  const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+export function formatDateOnly(dateString: string | Date | number): string {
+  const date = new Date(dateString as any);
   return date.toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',

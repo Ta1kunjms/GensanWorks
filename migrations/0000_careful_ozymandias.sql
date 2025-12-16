@@ -8,7 +8,7 @@ CREATE TABLE `admins` (
 	`updated_at` integer DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `admins_email_unique` ON `admins` (`email`);--> statement-breakpoint
+-- CREATE UNIQUE INDEX `admins_email_unique` ON `admins` (`email`);--> statement-breakpoint
 CREATE TABLE `applications` (
 	`id` text PRIMARY KEY NOT NULL,
 	`job_id` text NOT NULL,
@@ -28,7 +28,6 @@ CREATE TABLE `jobs` (
 	`location` text,
 	`salary_min` integer,
 	`salary_max` integer,
-	`status` text DEFAULT 'active' NOT NULL,
 	`created_at` integer DEFAULT CURRENT_TIMESTAMP NOT NULL,
 	`updated_at` integer DEFAULT CURRENT_TIMESTAMP NOT NULL
 );

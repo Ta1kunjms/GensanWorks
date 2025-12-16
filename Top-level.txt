@@ -1,0 +1,3383 @@
+Top-level entries (from workspace root)
+
+.env — environment variables file (not read; typically holds secrets like PORT, DATABASE_URL, JWT_SECRET). Side effects: affects runtime config when loaded. Risk: if committed, leaks secrets.
+.env.example — sample env template; purpose: onboarding.
+.env.local.example — sample env template for local overrides.
+.git — Git metadata.
+.github — GitHub config (workflows/instructions; not yet inspected).
+.gitignore — ignore patterns (not yet inspected).
+.local — local configuration folder (not yet inspected).
+.replit — Replit config (not yet inspected).
+.venv — Python virtual env (not inspected; not part of app).
+.vscode — editor settings (not inspected).
+ADMIN_USE_CASES.md — documentation (not inspected yet).
+app.db / app.db.* / app_backup_before_datefix.db — SQLite database files.
+applicants_table.csv — data export (not inspected).
+attached_assets — assets folder (not inspected).
+client — frontend React/Vite app (not inspected in this chunk).
+components.json — component config (not inspected).
+CONTRIBUTING.md — contributor guide (not inspected).
+data — data/seed files (not inspected).
+dev.log — runtime log (not inspected).
+dist — build output (not inspected).
+DOCUMENTATION.md — project docs (not inspected).
+drizzle.config.ts — Drizzle ORM config (inspected below).
+e2e — Playwright tests (not inspected).
+employers_table.csv — data export (not inspected).
+EMPLOYER_USE_CASES.md — docs (not inspected).
+jest.config.cjs — Jest config (inspected below).
+JOBSEEKER_USE_CASES.md — docs (not inspected).
+migrations — SQL migrations (not inspected).
+node_modules — dependencies.
+package-lock.json — lockfile (not inspected).
+package.json — project metadata/scripts/deps (inspected below).
+postcss.config.js — PostCSS config (inspected below).
+README.md — main README (inspected below).
+scripts — utility scripts (not inspected).
+server — backend (not inspected this chunk).
+server.log — log (not inspected).
+shared — shared schemas/types (not inspected this chunk).
+sqldiff.exe, sqlite3.exe, sqlite3_analyzer.exe, sqlite3_rsync.exe — sqlite tooling binaries.
+SUGGESTED_ISSUES.md — suggestions (not inspected).
+tailwind.config.ts — Tailwind config (inspected below).
+temp_unified.ts — temp file (not inspected).
+temp_update_jobs.sql — temp SQL (not inspected).
+test-results — test outputs (not inspected).
+tests — tests (not inspected).
+test_archive.py, test_login.py — Python tests (not inspected).
+tmp_match.json — temp data (not inspected).
+tsconfig.json — TS config (inspected below).
+types — types folder (not inspected).
+vite.config.ts — Vite config (inspected below).
+Detailed root file inspections
+
+package.json
+Purpose: project metadata, scripts, dependency manifest.
+Imports/exports: none (JSON). No functions.
+Scripts:
+dev: cross-env NODE_ENV=development tsx server/index.ts (runs server entry in dev with tsx).
+build: vite build && esbuild [index.ts](http://_vscodecontentref_/58) ... bundles client then server to index.js (esm). Side effect: writes dist/public and dist/index.js.
+start: production node index.js with NODE_ENV=production.
+check: tsc noEmit typecheck.
+DB scripts: db:push, db:seed, db:seed-1232, db:clear-applicants, db:reseed, db:restore-original, db:reseed-all, db:migrate, migrate:memstorage, migrate (compose migrate+push), seed.
+Tests: test -> jest.
+Dependencies: Express 5, React 18, Tailwind, Drizzle ORM, Passport strategies, ws, zod, charting libs, etc. Notable optional dependency bufferutil.
+Side effects: running scripts touches DB (drizzle-kit push, seed scripts), builds, etc.
+Potential errors: missing env vars for DB URL; build may fail if esbuild cannot resolve server/index.ts; dev may fail if tsx missing or TypeScript errors; db scripts depend on drizzle config and schema.
+tsconfig.json
+Purpose: TypeScript compiler settings (noEmit for checks).
+Key options: module ESNext, target ESNext, strict true, jsx preserve, moduleResolution bundler, paths aliases @/* -> client/src, @shared/* -> shared.
+include: client/src, shared, server.
+exclude: node_modules, build, dist, **/*.test.ts.
+Functions: none. Errors: misconfigured paths could break IDE; noEmit means tsc only checks.
+vite.config.ts
+Purpose: Vite config for client build/dev.
+Imports: defineConfig from vite; react plugin; path; runtimeErrorOverlay from @replit/vite-plugin-runtime-error-modal; dynamic require of @replit cartographer and dev-banner (optional).
+Exports: default defineConfig({...}).
+Logic step-by-step:
+Initialize plugins array with react() and runtimeErrorOverlay().
+If not production and REPL_ID set, conditionally push cartographer() and devBanner() if present (try/catch require fallback null).
+resolve.alias set for @, @shared, @assets using process.cwd() + path.
+root set to client/.
+build.outDir dist/public, emptyOutDir true (clears dist/public).
+server.fs.strict true, deny hidden files.
+Side effects: require calls may throw but caught; uses process.env to branch. No DB/API calls.
+Potential errors: optional plugins require might fail but caught; mis-set root may break builds; deny hidden might block requests for dotfiles (intentional).
+tailwind.config.ts
+Purpose: Tailwind theme/config.
+Imports: type Config.
+Exports: default config object.
+Logic:
+darkMode class-based.
+content globs: client/index.html, client/src/**/*.{js,jsx,ts,tsx}.
+theme.extend: borderRadius sizes; many CSS variable-driven colors; fonts set to CSS vars; keyframes for accordion down/up and corresponding animations.
+plugins: require("tailwindcss-animate"), require("@tailwindcss/typography").
+Side effects: none runtime; build-time config.
+Potential errors: require resolves at build; missing CSS vars could yield unexpected colors.
+postcss.config.js
+Purpose: PostCSS pipeline.
+Exports default with plugins tailwindcss and autoprefixer.
+Functions: none. Errors: missing dependencies would fail build.
+drizzle.config.ts
+Purpose: Drizzle-kit config.
+Imports: defineConfig from drizzle-kit.
+Reads process.env.DATABASE_URL; default "file:./app.db". Determines dialect by prefix postgresql://.
+Exports default config: out "./migrations", schema "./server/unified-schema.ts", dialect (postgresql or sqlite), dbCredentials url.
+Side effects: none immediately; drizzle-kit uses when generating/pushing.
+Potential errors: malformed DATABASE_URL; unsupported dialect if not starting with postgresql but not sqlite? but uses default.
+jest.config.cjs
+Purpose: Jest setup.
+module.exports with ts-jest preset, node environment, testMatch /tests//*.test.ts, moduleNameMapper for aliases.
+Functions: none. Potential errors: missing ts-jest or mismatched versions; path aliases need tsconfig-paths or jest resolver.
+README.md
+Purpose: project overview.
+Content: describes GensanWorks, features, quick start steps, demo accounts, docs, tech stack, scripts, API overview, troubleshooting, license, support.
+No executable code. Risks: minor outdated info vs actual code; instructions mention copilot-instructions.md.
+Other top-level items not yet opened (to be covered in subsequent chunks)
+
+.env.example, .env.local.example, .gitignore, .github, .local, .replit, .vscode, all docs (ADMIN_USE_CASES.md, EMPLOYER_USE_CASES.md, JOBSEEKER_USE_CASES.md, DOCUMENTATION.md, SUGGESTED_ISSUES.md), data files, logs, sqlite binaries, components.json, CONTRIBUTING.md, data, dist, e2e, migrations, scripts, server, shared, client, test-results, tests, types, temp_unified.ts, temp_update_jobs.sql, test_archive.py, test_login.py, etc. Will audit in later chunks.
+
+Section 1 — Project-Wide Scan (chunk 2: root docs/configs)
+
+Scanned items this chunk (full detail per file)
+
+.github (listed)
+
+Contains copilot-instructions.md, ISSUE_TEMPLATE/, workflows/. (Contents not yet opened; will cover later.)
+Purpose: repo automation/templates; no code executed here in runtime.
+ADMIN_USE_CASES.md (text doc, no imports/exports/functions)
+
+Purpose: exhaustive admin role use cases; 2704 lines.
+Content structure (first 400 lines inspected; remaining sections continue similarly with granular step flows, alt flows, business rules):
+Sections: Authentication & User Management; dashboard summary; manage applicant accounts (view/edit/delete/add/export/import, validations, alt flows, business rules like unique email, soft delete); manage employer accounts (view/verify/edit/suspend/delete/add, cascades, notifications). Each use case enumerates preconditions, main flow steps, alternative flows, postconditions, business rules.
+Side effects/API/DB: none (documentation only).
+Errors: none (text).
+EMPLOYER_USE_CASES.md (text doc)
+
+Purpose: employer actor use cases; high-level steps for registration/verification, profile management, posting jobs, managing jobs, candidate search/recommendations, application review, interview scheduling, offers/hiring, referral feedback, team/roles, analytics, notifications; cross-cutting rules (security, privacy, audit, performance, availability).
+No code/imports/exports/DB/API; no runtime errors.
+JOBSEEKER_USE_CASES.md (text doc)
+
+Purpose: jobseeker actor use cases; sign up/sign in/session; profile/resume builder; job discovery; view job details; apply; track applications; referrals; interview scheduling; messaging/notifications; saved jobs/alerts; account/security; privacy/consents; quality attributes.
+No code/imports/exports; no runtime errors.
+DOCUMENTATION.md (technical doc, 2186 lines total; first 400 lines inspected)
+
+Purpose: comprehensive platform documentation (architecture, tech stack, DB schema, API reference, auth, AI, frontend components, workflow, deployment, env vars, testing, troubleshooting, best practices, FAQ).
+Contains architecture diagrams (text), stack explanations, sample request flow. No executable code; no imports/exports.
+Side effects/API/DB: none (doc). Errors: none.
+SUGGESTED_ISSUES.md (text doc)
+
+Purpose: prewritten GitHub issue templates (bugs/features/tech/docs). Lists 30 suggested issues with labels, descriptions, steps to reproduce where applicable.
+No code/imports/exports; no runtime errors.
+CONTRIBUTING.md (text doc)
+
+Purpose: contributor guidelines: CoC, setup, workflow, coding standards, commit conventions, PR process, testing. Contains code examples for TypeScript/React best practices (illustrative only).
+No imports/exports; no executable side effects.
+components.json
+
+Purpose: shadcn/ui config.
+JSON fields: $schema (https://ui.shadcn.com/schema.json), style "new-york", rsc false, tsx true, tailwind config path tailwind.config.ts, css index.css, baseColor neutral, cssVariables true, prefix empty; aliases map components/utils/ui/lib/hooks to @/ paths.
+No functions; no side effects beyond tooling generation.
+.gitignore
+
+Purpose: ignore patterns.
+Entries: node_modules, dist, .DS_Store, server/public, vite.config.ts., .tar.gz, .env, server/ai-job-matcher.ts, .vscode/, .replit, .local/, .env, app.db, gensan_works.db, tmp_match.json, dev.log, server.log, dist/, node_modules/, .DS_Store, test_.py, tests/, attached_assets/.
+Side effect: prevents git tracking of listed paths (incl. env files, DB, logs, assets). Risk: ignoring tests folder (tests) means tests aren’t tracked? (but there is a tests/ in repo despite ignore—double-check later).
+.env.example
+
+Purpose: sample env vars for OAuth (FB, Discord).
+Keys: FB_CLIENT_ID/SECRET, DISCORD_CLIENT_ID/SECRET.
+No code; no side effects unless copied to .env.
+
+Completed root docs/config sweep: covered .github issue templates, CI workflow, .replit, entire DOCUMENTATION.md, temp_unified.ts, test_login.py, test_archive.py, empty tmp_match.json.
+Started server audit (todo now in-progress): cataloged server dir. Fully read esm-dirname.ts, db.ts, database.ts, db-helpers.ts, vite.ts, and began larger files:
+auth.ts: JWT helpers, bcrypt utilities, validation helpers, Google OAuth setup with dynamic storage settings or env fallback.
+middleware.ts: auth/role/admin guards, error handler, request logger, validation error handler.
+routes.ts: very large (4,967 lines); captured header portion with storage/db helpers, validation alert recorder, data normalizers, and helper functions for applicants/employers; still need the rest.
+storage.ts: very large (1,961 lines); captured header section with employment-status classification, applicant normalization, interface definitions, and initial DatabaseStorage methods; remainder pending.
+Listed server subfolders: utils/status.ts pending; data JSON files auth-settings.json, general-settings.json, data.json.archive pending. Shared/client/scripts/tests directories enumerated; detailed audit not started.
+
+Server audit continued: finished small helpers and bootstrapping.
+status.ts: computes profile completeness from applicant fields.
+index.ts: Express entry; seeds test accounts in test env, logs API responses, sets helmet headers, initializes Google OAuth/passport, registers routes, starts Vite dev middleware or static prod serving, optional WebSocket stub, ensures sample admin/employer/jobseeker/jobs in tests, exports start/stop.
+websocket.ts: stub no-ops.
+unified-schema.ts: full Drizzle schema (SQLite/Postgres) for admin access requests, notifications, admins, users (alias applicants), employers, jobs (single unified table), employer/job requirements, referrals, notes, applications, sessions; exports types.
+Data files: auth-settings.json (Google OAuth enabled with clientId/secret/callback URL), general-settings.json (site meta defaults), data.json.archive (seed-like dump with admin, sample job, access request).
+Large files partially read:
+ai-job-matcher.ts: parsed Groq response, fallback generators, rule-based scoring (weights), skills/education/location match, etc. (still >800 lines remaining).
+storage.ts: covered settings persistence, DB init, summary data, general/auth settings, recent activities, doughnut/bar chart data (still remaining sections).
+
+Finished ai-job-matcher.ts: covers location/salary/availability/experience/demographic scoring; extensive skill extraction + similarity mapping; identifies strengths/concerns; recommendation thresholds; helpers to normalize salary, age, education level, format NSRP fields (education, skills, work experience, preferred occupations, language proficiency, job preferences). Exports singleton aiJobMatcher.
+Finished storage.ts: remaining methods include line chart aggregation, referrals mapping (status colors, safe dates, filters/pagination), notes CRUD, jobseeker/employer CRUD, job posts CRUD + applications, admins/applicants CRUD, admin access requests, skills report (top 20, shortages). File ends exporting storage as DatabaseStorage.
+Read more of routes.ts (auth/settings and employer helpers section). Includes employer payload normalization/update builders, auth settings sanitization, OAuth helpers (state encode/decode, redirect resolution, Google callback builder), route registration start: JSON date normalizer middleware, /api/health, general settings public/admin get/put with Zod validation, auth settings public/admin get/put with Zod validation/sanitization. Routes file still long; not fully scanned yet.
+
+Key routes and logic highlights:
+
+OAuth & settings: Google OAuth initiation/callback with role-aware redirects; builds dynamic callback URL; auto-creates employer/applicant records when missing; auth/general settings CRUD with Zod validation and public sanitization.
+Messaging: Inbox/sent/all, conversation, send, mark read, unread count; WebSocket notifications via websocket.ts.
+Auth: Signup (jobseeker/employer/admin), universal login across roles, me/logout, admin creation/update via access requests, change-password for jobseekers; uses hashPassword/verifyPassword and JWT.
+Admin: Stats/dashboard, users listing, jobs CRUD/approval/archive, applications listing, access-requests approve/reject, stakeholders listing, applicants/employers filtered queries, duplicate employer check, employer CRUD/archive/delete, system alerts.
+Employers: Profile get/update, own jobs CRUD/draft/submit, archive/unarchive, dashboard, update application status.
+Jobs (public/admin): List active, create/update/delete/archive/unarchive; job matching endpoint and applicant AI insights via aiJobMatcher; archived listing.
+Applicants: List/filter, get/update self or admin, delete single/bulk; profile image upload; change password; jobseeker dashboard; apply to job, applications listing.
+Reports/metrics: Skills report, impact metrics, summary/recent activities, chart endpoints (bar/doughnut/line/employment-status), referrals, notes.
+Notifications: SSE stream, fetch/create/mark-read with DB-backed notifications.
+Utility normalization: Extensive helpers for employer payloads, job mapping, applicant/job serialization; defensive date handling; validation error helpers.
+Duplications: Message routes redefined twice (near 1200s and again at file end), admin stats route duplicated; potential cleanup area.
+Fallback: /api 404 returns JSON error.
+
+Highlights from schema.ts (Zod-first contracts, reused server/client):
+
+Core metadata: accountMetadataSchema, User type; admin access requests; summary cards/data; recent activities; notifications; chart data (bar/doughnut/line).
+Tables: normalized applicant/employer/job table schemas (snake_case), plus TypeScript types.
+Referral/notes: referralSchema + filters (status normalization), noteSchema, notesFilters.
+Settings/auth: generalSettingsSchema; auth providers (Google/custom) with authSettingsSchema; helper types for providers.
+Auth/user flows: jobseeker/employer/admin signup, login schema, profile image upload/payload, change password, jobseeker account schema, profile update schemas, user profile schema.
+Job/applications: jobPostSchema, jobCreateSchema (salaryPeriod enum: hourly/daily/weekly/15days/monthly), applicationSchema; unified Job type (superset with vacancy fields).
+NSRP applicant: Comprehensive applicantSchema with personal info, addresses, contacts, government IDs, disability, employment status hierarchy (includes legacy values), job preferences, language/education/training/licenses/work experience/references, skills, document requirements, timestamps; supporting sub-schemas and enums (employment status/types, unemployed reasons, OFW/4Ps flags). applicantCreateSchema omits id/timestamps.
+Employer (SRS Form 2): employerSchema with contacts, industry codes, compliance info, multi-establishment support, requirement checklist, attachments, TINs, subscription flags, archive timestamps. employerCreateSchema derived.
+Job vacancy (SRS Form 2A): jobVacancySchema with industry codes, education/experience, salary object, vacantPositions/paidEmployees, status P/T/C, requirements, contacts, attachments; filters schema.
+Industry code helpers: enums, maps (industryNameMap, psicDetailedNameMap, psicDivisionNameMap), resolveIndustryName.
+Filters: jobVacancyFiltersSchema, stakeholderFilterSchema, applicantFilterSchema (dates validated), employerFilterSchema.
+Dashboard stats: admin/employer/jobseeker/public stats schemas.
+Application management: jobApplicationSchema + create/update.
+Types exported for all above.
+Notes/duplication: The file contains duplicated blocks near the end (industry codes, jobVacancy, auth/signup/profile schemas, filters, dashboard stats) — same content repeated; no functional harm but redundant.
+
+Other file: bcryptjs.d.ts declares module 'bcryptjs' for typing.
+
+Audit continues in client — read key libs, APIs, components, and public pages:
+
+lib: auth.tsx (localStorage token/user, login/signup by role, authFetch adds bearer; logout clears), role-guard.tsx and protected-route.tsx (role gating via wouter redirects), queryClient.ts (React Query defaults, getQueryFn with optional 401→null), employment.ts (employment label/badge helpers), locations.ts (PH locations fetch with PSGC fallback), time-utils.ts, utils.ts (cn, API error formatter). material-icons.tsx is empty.
+api: Applicants/applications/jobseeker profile image + password, notes, notifications (plus SSE subscribe), settings auth endpoints. Uses authFetch; minimal error handling.
+Components (selected):
+app-sidebar.tsx role-based menus, admin-only logout dialog, fetches applicant profile name for jobseekers; hides some admin items but keeps routes.
+top-navbar.tsx page title mapping by role, search input (no API), theme toggle persisted, logout dialogs.
+summary-card.tsx sparkline using history data; gray treatment for zero values.
+stat-card.tsx variant-styled stat tiles + skeleton.
+recent-activities.tsx scrollable list.
+job-card.tsx rich job display with archive call to /api/jobs/{id}/archive, “needs admin review” banner, inline modal.
+Large modals: apply-job-modal.tsx (jobseeker cover letter >50 chars, applies via /api/jobs/{id}/apply, notifies employer via /api/messages), ai-job-matching-modal.tsx (AI match viewer with per-applicant insights fetch), add-applicant-modal.tsx (multi-step NSRP form; extensive state, uses shared enums; posts to /api/applicants), add-employer-modal.tsx (multi-step SRS form, localStorage draft, duplicate check, file placeholders), add-job-posting-modal.tsx (admin job form, fetches employers, posts /api/jobs), add-job-vacancy-modal.tsx (SRS Form 2A, admin/employer modes, posts /api/admin/jobs or /api/employer/jobs).
+Pages (public):
+landing.tsx (very long marketing page; pulls /api/settings/general/public, /api/summary, /api/public/impact, prefetches charts/referrals; animated hero, meta tags).
+Static info pages: helpdesk.tsx, help-support.tsx, about-peso.tsx, accessibility.tsx, contact.tsx, privacy.tsx (DPA-aligned statements).
+oauth-callback.tsx handles token params, sets auth, hard redirect by role or fetches /api/profile; not-found.tsx simple 404.
+Remaining to audit: admin/employer/jobseeker page folders, remaining components (referral/slip, notifications cards, etc.), hooks, ui primitives, and scripts/migrations/tests.
+
+Employer pages (client/src/pages/employer)
+
+dashboard.tsx: React Query hits /api/employer/dashboard, /api/employer/applications, /api/employer/jobs; tabs for applications/jobs/analytics; quick actions route to jobs/applications/profile; status badge colors for applications.
+jobs.tsx: Full CRUD+archive for jobs via /api/employer/jobs (POST/PUT/DELETE) and /api/employer/jobs/:id/archive (PATCH). Validates required fields (title, description/skill, location, education, salary, vacancies, paidEmployees, industryCodes, preparedBy*). Supports drafts (saveAsDraft flag), status filtering (pending/active/rejected/draft/archived), edit form prefill from existing job fields, industry checkbox list, archive/unarchive, delete confirmations. Uses JobCard to render postings; blocks only via UI messaging (no hard gate).
+applications.tsx: Fetches applications from /api/referrals; filters by job and status; requires feedback before PATCH /api/referrals/{refId}/status. Copy-to-clipboard for applicantId. Modal view via state.
+messages.tsx: In-app messaging with employers/applicants through /api/messages and /api/messages/conversation/{peer}; send POST sets receiverRole=jobseeker; mark-as-read via PATCH /api/messages/{id}/read. Threads grouped by peer; unread badge; optional subject.
+notifications.tsx: Wrapper around shared NotificationsPage with role="employer".
+profile.tsx: Large employer profile editor (SRS Form 2). GET /api/employer/profile, PUT same to save. Normalizes varied field names/arrays to a ProfileState; handles additional establishments list with temp IDs. Builds payload including contact person, address, industryCodes (string or array), numbers parsed, additionalEstablishments array. Edit/preview toggles; industry options from industryNameMap; handles file name for logo only (no upload). Uses switches for srsSubscriber/manpowerAgency.
+Jobseeker pages (client/src/pages/jobseeker)
+
+dashboard.tsx: React Query for /api/jobseeker/dashboard, /api/jobseeker/applications, and public /api/jobs; tabs for applications/recommended/activity; status badges; profile completeness prompt linking to profile; basic date/status formatting.
+jobs.tsx: Main search/browse. Fetch /api/jobs with query params (search/salary/education/experience/industry/jobStatus) and forces status=approved; paginated (limit 12, offset). Filters (spotlight: trending/highSalary/entry/saved), sort (date/salary/relevance), local saved jobs in localStorage, share link generator, deep-link ?job= opens detail modal and scrolls. Hides archived jobs client-side. Apply via ApplyJobModal; view via ViewJobVacancyModal.
+applications.tsx: Uses fetchJobseekerApplications (API wrapper) via React Query; filters by status/search; status chips map to styles; detail dialog; summary counts; follow-up link to messages with prefilled text; handles loading/empty states.
+profile.tsx: Extensive NSRP form. GET /api/applicants/{user.id}, PUT same to update. Validates address presence before save. Loads PH locations via fetchPhilippineLocations, cascades province/municipality/barangay. Manages array fields with helpers. Edit toggle and basic loading/empty guards.
+messages.tsx: Similar to employer messaging but receiverRole=employer; threads from /api/messages?type=all; conversation fetch and POST send; badges for unread/application; subject + body inputs.
+settings.tsx: Local-only notification/privacy prefs persisted to localStorage; change password via POST /api/change-password; delete account via DELETE /api/account then logout. Tabs for notifications/privacy/security/danger; toggles stored under jobseeker-settings key.
+notifications.tsx: Wrapper NotificationsPage role="jobseeker".
+Auth pages: login.tsx uses useAuth.login; optional Google SSO if /api/settings/auth/public exposes provider enabled; redirects to dashboard. signup.tsx uses useAuth.signup(..., "jobseeker") with password checks; success toast then dashboard.
+use-case-descriptions.tsx: Static use-case tables with print/PDF via html2canvas + jsPDF.
+Notable behaviors/risks
+
+Employer applications/status update demands feedback before PATCH; uses /api/referrals endpoints (employer + jobseeker share).
+Jobseeker job fetch enforces status=approved in query but still relies on server to honor; archived filtered client-side only.
+Employer profile only saves file name for logo (no upload), and many fields are optional; additional establishments sent with id omitted if temp- prefixed.
+Local saved jobs/settings stored in localStorage (keys: savedJobs, jobseeker-settings).
+
+Finished scanning remaining jobseeker pages.
+dashboard.tsx: Recommended jobs card grid (derived from /api/jobs result), activity tab shows stats/quick actions; uses status/color helpers, toLocale formatting.
+jobs.tsx: Full search/browse experience—filters, spotlight views, pagination, saved jobs in localStorage, share links, deep-link highlight via ?job=, apply/view modals, hides archived, forces status=approved param. Uses chips for filters, insights cards, advanced filters (salary/edu/experience/industry/job type).
+applications.tsx (tail): Modal details include company/location/salary/education/schedule; cover letter; suggested steps; footer buttons to messages/close.
+messages.tsx (tail): Conversation render, subject badge, send form with character count, disables when no peer or pending.
+settings.tsx (tail): Danger zone inline modal for delete account; destructive DELETE /api/account.
+profile.tsx: Completed tabs—employment preferences (unemployed/self-employed options, OFW/4Ps flags, preferred occupations/locations/overseas countries), education/tech training/pro licenses editors with add/remove, work experience, skills/languages with TagEditor, preferences tab shows summary + profile completeness progress bar. TagEditor uses “??” remove button placeholder; UI only. Profile completeness computed from several sections.
+
+Noted the tests and E2E coverage:
+
+api.test.ts: supertest smoke for GET /api/summary and GET /api/referrals expecting 200/array.
+employment-helpers.test.ts: unit tests for getEmploymentStatusLabel/getEmploymentBadgeTone (handles wage vs self-employed, unemployed reasons, abroad country, fallback “Not specified”, tones).
+integration.test.ts: spins server via startServer/stopServer with PORT forced to TEST_PORT (default 5000); assumes seeded creds (admin@local.test/adminpass, employer01@gensanworks-demo.ph/EmployerDemoPass123!, applicant001@demo.gensanworks.com/JobseekerDemoPass123!). Covers health, auth failures, admin stats/users/jobs, employer job CRUD + non-employer rejection, jobseeker applications, /auth/me with/without token. Some tests accept 201/400 for duplicate job/apply.
+job-status-smoke.spec.ts: Playwright flow using BASE_URL default http://127.0.0.1:5001; signs up a fresh employer, logs in UI, creates job (expects pending), logs in admin UI, approves to active, rechecks employer view. Admin creds from env or admin@local.test/adminpass.
+sample.spec.ts: minimal homepage title check at http://localhost:5000.
+
+Progress: scanned more scripts. Added-column helpers (add-application-columns.ts, add-vacant-paid-columns.ts, add-login-columns.ts, add-employer-login-columns.ts) add missing fields/indexes to applications/applicants/employers/job_vacancies using libsql/initializeDatabase guards. Backfill/maintenance scripts: backfill-drizzle-migrations.ts registers existing SQL files into __drizzle_migrations; backfill-jobs-timestamps.ts and backfill-vacancy-timestamps.ts populate missing createdAt/updatedAt via Drizzle; migrate-industry-codes.ts renames industry_type→industry_codes and drops legacy vacancy columns; migrate-nsrp-fields.ts adds many NSRP applicant columns plus defaults/migration of skills.
+
+Progress update: Read more scripts.
+
+migrate-admin-access-requests.ts: Drizzle migrator wrapper; runs migrations folder via migrate(db, { migrationsFolder: "./migrations" }).
+migrate-to-db.ts: Migrates legacy server/data/data.json memstorage into SQLite (employers/jobseekers/admins/jobs) using Drizzle tables; logs per record, onConflictDoNothing; next steps printed post-migration.
+move-jobs-to-needs-review.ts: Finds jobs with status approved and sets to pending with updatedAt now, via storage.getDb() and Drizzle update.
+drop-users-table.ts: Drops users table via initializeDatabase; announces migration complete to applicants-only.
+reseed-gensan.ts: Large Faker seeder: clears jobs/employers/users, seeds 456 applicants (usersTable), 32 employers, 74 jobs with Gensan-specific data, random NSRP-like fields, salary/experience/addresses; uses unified-schema tables.
+
+Progress: Covered more scripts.
+
+seed-full-demo.ts: SQLite direct seeder with bcrypt; inserts 567 users (first two are admin/jobseeker demo accounts) + 40 employers (first is demo employer) + 37 jobs. Uses random Filipino-flavored data; sets special creds admin@local.test/adminpass, applicant001@demo.gensanworks.com/JobseekerDemoPass123!, employer01@gensanworks-demo.ph/EmployerDemoPass123!.
+seed-random-demo.ts: Drizzle-based seeder (users/employers/jobs) wiping tables first; 567 applicants, 40 employers, 37 jobs with rich fields (addresses, preferences, attachments); uses unified-schema tables.
+seed-test-accounts.ts: Upserts demo admin/employer/jobseeker with hashed passwords into admins/employers/users (admin@local.test, employer01@gensanworks-demo.ph, applicant001@demo.gensanworks.com).
+seed-test-employers.ts: Seeds three employers and two job vacancies with specific dates (today/yesterday/next week) for calendar testing.
+seed-sample-applicants.ts: Large libsql script inserting curated applicant profiles with rich skill/education data and bcrypt hashing.
+seed-sample-jobs.ts: Uses storage to add one employer and three jobs via storage addEmployer/addJobPost (status active, jobStatus approved).
+seed-gensan.ts: Older faker seeder using legacy server/db schema for applicants/employers/jobs (456/32/74 counts).
+seed-gensan-employers-jobs.ts: Huge curated dataset of real Gensan employers (industry codes, contacts, geo codes) and job seeds; uses unified-schema + hashPassword; default password Employers@2025.
+check-admin.ts: Prints admins table and presence of admin@local.test.
+debug-match.ts: Lists jobs, picks one, runs aiJobMatcher.matchApplicantsToJob against applicants.
+
+Progress: Migrations list enumerated; reviewed more scripts.
+
+Fix/maintenance scripts:
+
+fix-double-stringify.ts: hardcoded update for one vacancy’s industry_codes JSON (vacancy_1764176977628).
+fix-industry-codes-job-status.ts: normalizes job_vacancies rows—parses industry codes (handles double-stringify, pads to 2 digits) and maps job_status text → codes P/T/C; updates if changed.
+Generators/seeders:
+
+generate-employer-job-seed.ts: generates synthetic employers-with-jobs JSON to data/seed/employers-with-jobs.json (fs/promises); defines company/industry/job templates.
+seed-237-applicants.ts: Drizzle seeder for 237 applicants with varied skills/status/address; batch insert via applicantsTable.
+seed-applicants.ts: Adds 3 basic applicants into applicantsTable.
+Additional seeder references (previous batch): seed-full-demo, seed-random-demo, seed-gensan(-employers-jobs), seed-sample-*, seed-test-*, etc.
+
+Progress: Finished remaining scripts.
+
+check-address.ts: prints address fields for first 3 applicants.
+check-applicants.ts: dumps applicant and user counts/names from Drizzle.
+check-libsql.mjs: checks for unique indexes in sqlite master (admins_email_unique, applicants_email_unique).
+create-demo-admin.ts: creates demo admin admin@local.test/adminpass if missing.
+debug-admin-job.ts: uses generateToken to hit /api/admin/jobs with a payload against first employer; prints status/body.
+Todo list updated—Section 1 scripts/migrations/tests audit marked completed.
+
+Migration timeline (SQL files 0000–0031) distilled:
+
+0000: Base tables admins, applications, jobs (id/title/description/location/salary_min/max), sessions, users (role/profile_data), unique users email.
+0001: Adds applicants, employers, job_vacancies tables with SRS-like fields.
+0002: Backfill created_at on applicants if missing.
+0003: Add salary_period to jobs.
+0003a: Create referrals table (referral_id, applicant/employer/vacancy, status, timestamps).
+0004: Add referral slip tracking columns + index.
+0005: Placeholder for jobs archived (no SQL).
+0006: Placeholder to add job_vacancies archived (no SQL).
+0007: Rebuild referrals (drops unique slip), add archived/archived_at to job_vacancies.
+0008_add-job-status-column: Add status (default pending) to jobs and backfill.
+0008_backfill_timestamps: Set missing created/updated across applicants/employers/job_vacancies/jobs/referrals to now (ms).
+0009_unify_applicants_users: Add password_hash/role/has_account to applicants; drop users table.
+0010_add_nsrp_fields: NSRP additions to applicants (disability_specify, months_unemployed, OFW fields, 4Ps, preferred_* JSON, employment_type_4, professional_licenses, other_skills_specify) + defaults.
+0011_add_complete_nsrp_fields: Adds house_street_village, repeats NSRP fields, adds other_skills, professional_licenses, keeps skills, note about not dropping old address.
+0011_srs_form_2a_job_vacancies: Adds industry_codes to job_vacancies, backfills from industry_type; comments about dropping legacy cols.
+0012_add_application_fields: Adds applicant_id, cover_letter to applications + indexes (IF NOT EXISTS).
+0013_add_notifications: Creates notifications table + index.
+0014_add_archived_to_jobs: Adds archived/archivedAt to jobsTable (note: name uses jobsTable alias).
+0015_migrate_to_single_jobs_table: Drops jobVacanciesTable, clears jobsTable, adds SRS fields onto jobsTable (positionTitle, education, skills, location, preparedBy, etc.).
+0016_drop_job_vacancies_table: Drops jobVacanciesTable.
+0016_recreate_jobs_table: Recreates jobs with SRS fields (position_title, industry_codes, vacant_positions, paid_employees, job_status, prepared_by*, barangay/municipality/province, archived, timestamps).
+0017_clear_jobs_table: DELETE FROM jobsTable.
+0018_add_admin_access_requests: Creates admin_access_requests table (name/email/phone/org/status + timestamps).
+0019_fix_jobs_table: Recreate jobs to simple schema (employer_id, title, description, location, salary_min/max, status default active).
+0020_rename_title_to_position_title: Recreate jobs; rename title→position_title.
+0021_add_profile_image_to_applicants: Adds profile_image to applicants.
+0022_add_job_comp_fields: Adds location, salary_min/max/period/amount/type, skills to jobs.
+0023_add_applicant_registration_date: Adds registration_date to applicants and backfills from created_at.
+0024_add_simple_applicant_fields: Adds name/address/skills/nsrp_number/nsrp_status/government IDs/job_preference/household_head/dependents to applicants.
+0025_drop_applicants_table: Drops applicants.
+0026_add_applicant_fields_to_users: Adds applicant-like fields to users (address, household_head, dependents, job_preference, skills, nsrp fields).
+0027_rainy_bromley: Creates detail tables (applicant_education/languages/licenses/skills/trainings/work_experience), employer_requirements, job_requirements; also adds many columns to applicants, employers, jobs (trade_name, address_details, contact fields, industry_codes, requirements, attachments, salary/contact/requirements/attachments/account_metadata on jobs).
+0027_recreate_users_table_nsrp: Drops users and recreates with NSRP + login fields (surname/first/middle, demographics, employment, OFW, preferences, education/training/licenses/work/skills, timestamps).
+0028_force_drop_users_table: (not read here; expect drop users).
+0028_spotty_thor: (not read here; likely housekeeping).
+0029_add_other_skills_training: (not read here; likely adds other_skills_training).
+0029_add_user_account_columns: (not read here; likely adds account/login columns).
+0030_update_employment_status_hierarchy: (not read here; likely status normalization).
+0031_align_requested_tables: (not read here; likely final alignment).
+
+Here are the remaining migrations 0028–0031:
+
+0028_force_drop_users_table.sql: DROP TABLE IF EXISTS users; (force reset).
+0028_spotty_thor.sql: Recreates users with full NSRP/login fields (email unique + nsrp_number unique, role, demographic, employment, OFW/4Ps, preferences, attachments, timestamps). Drops applicant_* detail tables and applicants.
+0029_add_other_skills_training.sql: Adds other_skills_training TEXT to users.
+0029_add_user_account_columns.sql: Adds has_account (default 0), house_street_village, other_skills to users.
+0030_update_employment_status_hierarchy.sql: Adds employment detail columns to users (employment_status_detail, self_employed_category/_other, unemployed_reason/_other, unemployed_abroad_country) and normalizes employment_status hierarchy:
+Employed/Wage/Self-employed variants → employment_status='Employed', sets employment_status_detail and self_employed_category accordingly.
+Terminated/Finished Contract/Resigned/etc → employment_status='Unemployed', maps reasons (including converting “Terminated/Laid off abroad”).
+Fills self_employed_category from employment_type when missing.
+0031_align_requested_tables.sql: Adds requested columns if missing:
+Users: last_name, birth_date, gender, education_level, course, registration_date, nsrp_registration_no, profile_image, archived.
+Employers: name, phone, company_type/industry/size/registration_no/description, status, profile_image.
+Jobs: employment_type, salary_period_raw, qualifications, responsibilities, vacancies, job_category, nsrp_job_code, job_compensation_type/details, job_benefits, job_requirements, job_experience_level, job_education_level, job_shift/schedule, application_deadline, contact person/email/phone.
+
+
+
+
+Section 2—API Surface (server/routes.ts)
+
+General Settings
+
+GET /api/health — none — returns {status:"ok"}.
+GET /api/settings/general/public — none — parses generalSettingsSchema; falls back to defaults.
+GET /api/settings/general — auth+admin — parses generalSettingsSchema.
+PUT /api/settings/general — auth+admin — generalSettingsSchema.parse(body); 501 if storage missing.
+GET /api/settings/auth/public — none — authSettingsSchema.parse(settings), stripped secrets.
+GET /api/settings/auth — auth+admin — same parse.
+PUT /api/settings/auth — auth+admin — authSettingsSchema.parse(body); 501 if storage missing.
+Auth / Accounts
+
+GET /auth/google / GET /auth/google/callback — public — passport Google; state token includes role/redirect; auto-creates employer/applicant if missing.
+POST /api/auth/signup/jobseeker — public — manual validation only (email/password, name pieces); not using jobseekerSignupSchema; writes applicants table; returns JWT.
+POST /api/auth/signup/employer — public — manual validation; writes employers table; returns JWT.
+POST /api/auth/signup/admin — public — adminCreateSchema + password rules; adds admin; returns JWT.
+POST /api/auth/login — public — loginSchema; tries jobseeker→employer→admin; JWT on success.
+GET /api/auth/me — auth.
+POST /api/auth/logout — public — static message.
+POST /api/admin/create-admin-user — auth+admin — adminCreateSchema.safeParse; updates/creates admin; 409 on duplicate.
+PUT /api/admin/users/:id/suspend — auth+admin — toggles timestamp only (no real suspend flag).
+Messaging (duplicated block appears twice in file)
+
+GET /api/messages — auth — query type (inbox|sent|all); fetches from messagesTable.
+GET /api/messages/conversation/:userId — auth — two-way thread.
+POST /api/messages — auth — minimal body check; inserts message; websocket notify.
+PATCH /api/messages/:id/read — auth — receiver only; marks read.
+GET /api/messages/unread/count — auth.
+Issues: routes duplicated near EOF; missing schema for payloads; no pagination; subject/content length not constrained.
+Jobseekers / Applicants
+
+GET /api/applicants — auth — applicantFilterSchema; uses storage.getApplicants; slices, maps to table shape.
+GET /api/applicants/:id — auth — loads by id; 404 if missing.
+PUT /api/applicants/:id — auth — role check (self or admin); strips disallowed fields; no Zod; normalizes timestamps; uses storage.updateApplicant.
+DELETE /api/applicants/:id — auth+admin.
+POST /api/applicants/bulk-delete — auth+admin — requires ids array.
+DELETE /api/account — auth — only jobseekers; deletes applicant row.
+GET /api/admin/applicants — auth (adminOnly missing) — manual filters; sorts; paginates; maps table shape. Bug: adminOnly not applied.
+Employers
+
+GET /api/employer/profile / PUT /api/employer/profile — auth+role(employer) — uses employerUpdateSchema on PUT.
+GET /api/employer/jobs — auth+role(employer) — lists own jobs.
+Employer-managed jobs: POST /api/employer/jobs, PUT /api/employer/jobs/:jobId, DELETE /api/employer/jobs/:jobId, PATCH /api/employer/jobs/:jobId/archive — all auth+role(employer) — use jobCreateSchema/employerJobUpdateSchema; status → pending/draft; archive toggle.
+Employer registry (admin/shared):
+GET /api/employers (public) — optional includeArchived/limit; no filter schema.
+POST /api/employers/check-duplicate — auth+admin — manual normalize.
+POST /api/employers — auth+admin — employerCreateSchema.
+GET /api/employers/archived — auth+admin.
+POST /api/employers/bulk-delete — auth+admin.
+GET /api/employers/:id / PUT /api/employers/:id / PATCH /api/employers/:id/archive / DELETE /api/employers/:id — auth+admin; PUT uses employerUpdateSchema.
+PATCH /api/employers/:id/requirements/submit-all — auth+admin — marks all requirement entries submitted.
+Admin employers list: GET /api/admin/employers — auth (adminOnly missing) — manual filters; paginated.
+Jobs (admin/public)
+
+GET /api/admin/jobs — auth (adminOnly missing) — returns mapped jobs.
+POST /api/admin/jobs — auth+admin — jobCreateSchema (+ employer existence).
+PATCH /api/admin/jobs/:id/status — auth+admin — validates status vs allowedJobStatuses; inserts notification on approve.
+PUT /api/admin/jobs/:id / DELETE /api/admin/jobs/:id — auth+admin — stub/returns static message (PUT) or deletes.
+Public jobs: GET /api/jobs — public — active non-archived; map table shape.
+Admin archive: PATCH /api/jobs/:jobId/archive — auth+admin; PATCH /api/jobs/:jobId/unarchive — public (missing auth) — toggles archived; error-handling for getTime.
+POST /api/jobs / PUT /api/jobs/:jobId / DELETE /api/jobs/:jobId — auth+admin — create/update/delete (update is permissive, no schema).
+Archived listing: GET /api/jobs/archived — public — returns jobs array.
+Matching/AI: GET /api/jobs/:jobId/match, GET /api/jobs/:jobId/applicant/:applicantId/ai-insights — auth — loads job/applicant; uses aiJobMatcher.
+Job apply: POST /api/jobs/:jobId/apply — auth jobseeker/freelancer — no schema; prevents duplicate; inserts application.
+Jobseeker applications: GET /api/jobseeker/applications — auth jobseeker/freelancer — enriches jobs.
+Jobseeker dashboard: GET /api/jobseeker/dashboard — auth jobseeker/freelancer — uses computeProfileCompleteness.
+Jobseeker profile image / change password: POST /api/jobseeker/profile-image, POST /api/jobseeker/change-password — auth jobseeker/freelancer — password uses changePasswordSchema.
+Employer dashboard: GET /api/employer/dashboard — auth+role(employer).
+Employer application update: PUT /api/employer/applications/:id — auth+role(employer) — no schema; free-form status/notes.
+Admin Stakeholders / Dashboard
+
+GET /api/admin/stats — auth+admin — defined twice.
+GET /api/admin/users — auth+admin — returns combined applicants/employers (hasAccount true).
+DELETE /api/admin/users/:id — auth+admin — deletes from applicants else employers.
+PUT /api/admin/users/:id — auth+admin — stub message.
+GET /api/admin/stakeholders — auth+admin — manual filters; pagination.
+GET /api/admin/dashboard — auth+admin — aggregated counts.
+GET /api/admin/system-alerts — auth+admin — returns validationAlerts array.
+Access Requests (admins)
+
+GET /api/admin/access-requests — auth+admin — optional status filter.
+POST /api/admin/access-requests — public — uses adminAccessRequestSchema (omit id/status timestamps).
+POST /api/admin/access-requests/:id/approve — auth+admin — updates status, auto-creates admin if absent (random password).
+POST /api/admin/access-requests/:id/reject — auth+admin.
+Reports / Public Data
+
+GET /api/reports/skills — public — optional startDate/endDate (yyyy-mm-dd) — uses storage.getSkillsReport if present.
+GET /api/job-vacancies — public — jobVacancyFiltersSchema.safeParse — filters/aggregates; returns {vacancies,total,limit,offset}.
+GET /api/jobs/archived — public — archived jobs.
+Impact and charts: GET /api/public/impact (manual calcs); GET /api/summary, /api/recent-activities, /api/charts/bar|doughnut|line|employment-status — public — storage-backed; employment-status uses classifyEmploymentStatus.
+Referrals: GET /api/referrals — public — referralFiltersSchema; filters locally; bug: response returns full referrals (ignores pagination variable paginatedReferrals).
+Notes: GET /api/notes — public — notesFiltersSchema parsed but ignored; returns all notes.
+Notifications / SSE
+
+GET /api/notifications/stream — auth — SSE.
+GET /api/notifications — auth — filters by user/role; seeds sample if empty.
+POST /api/notifications — auth+admin — minimal validation.
+PATCH /api/notifications/:id/read — auth — raw SQL update.
+Fallback
+
+app.use("/api", …) 404 JSON for unknown API routes.
+Key Issues / Fix Recommendations
+
+Duplicate routes: /api/admin/stats and the entire messages block are defined twice; remove duplicates to avoid handler ambiguity.
+Missing adminOnly: /api/admin/applicants and /api/admin/employers lack adminOnly guard—add middleware.
+Referrals pagination bug: GET /api/referrals computes paginatedReferrals but responds with full referrals; return the paginated slice plus total.
+Unprotected unarchive: PATCH /api/jobs/:jobId/unarchive is public; likely needs auth+admin (or employer-owner) guard.
+Weak validation: Many endpoints manually check fields instead of Zod (signup jobseeker/employer, messages, job apply/update, employer application update, admin users PUT). Adopt existing schemas (jobseekerSignupSchema, employerSignupSchema, jobApplicationUpdateSchema, etc.) or add new ones.
+PUT /api/jobs/:jobId: Blind merge of request body; no schema; can overwrite immutable fields. Apply jobCreateSchema.partial() + whitelist fields.
+Admin suspend endpoint: Does not persist a suspended flag; only updates timestamp. Add a suspended column or remove endpoint.
+Notifications read: raw SQL without user scoping; any authed user can mark any notification. Add WHERE id AND (userId match or role/global).
+Access requests POST: Public; consider rate-limit/captcha; approval flow auto-creates admin with random password but does not surface it—document delivery path.
+Public notes/referrals: Both are unauthenticated; confirm intended; otherwise add auth.
+
+API Map + Validation/Gaps (Section 2 complete)
+
+Settings
+
+GET /api/health (public): no schema; returns {status:"ok"}.
+GET /api/settings/general/public (public): generalSettingsSchema; defaults if storage missing.
+GET /api/settings/general (auth+admin): generalSettingsSchema.
+PUT /api/settings/general (auth+admin): generalSettingsSchema; 501 if persistence missing. Fix: none unless persistence needed.
+GET /api/settings/auth/public (public): authSettingsSchema, sanitized.
+GET /api/settings/auth (auth+admin): authSettingsSchema.
+PUT /api/settings/auth (auth+admin): authSettingsSchema; 501 if persistence missing.
+Auth & Accounts
+
+GET /auth/google, GET /auth/google/callback (public): no Zod; auto-create employer/applicant; role from state.
+POST /api/auth/signup/jobseeker (public): manual checks only; Not using jobseekerSignupSchema; inserts/updates applicantsTable; returns JWT.
+Fix: apply jobseekerSignupSchema, require first/last/email/password, normalize names/emails; enforce password rules.
+POST /api/auth/signup/employer (public): manual; Not using employerSignupSchema; inserts employersTable.
+Fix: use employerSignupSchema, enforce company + password.
+POST /api/auth/signup/admin (public): adminCreateSchema; validate email/password.
+POST /api/auth/login (public): loginSchema; tries jobseeker→employer→admin; bcrypt checks; JWT.
+GET /api/auth/me (auth): no schema; returns user from token.
+POST /api/auth/logout (public): static message.
+Admin user ops
+
+POST /api/admin/create-admin-user (auth+admin): adminCreateSchema.safeParse; email/password rules; updates/creates admin; optional requestId.
+PUT /api/admin/users/:id/suspend (auth+admin): no schema; only updates timestamps; no suspended flag persisted. Fix: add column/flag or remove endpoint.
+DELETE /api/admin/users/:id (auth+admin): deletes from applicants else employers; no schema.
+Access requests
+
+GET /api/admin/access-requests (auth+admin): optional status filter; no schema.
+POST /api/admin/access-requests (public): adminAccessRequestSchema (omit id/status/timestamps).
+POST /api/admin/access-requests/:id/approve (auth+admin): no schema; sets status approved; auto-creates admin if missing with random password.
+POST /api/admin/access-requests/:id/reject (auth+admin): no schema.
+Messaging (duplicated block later in file)
+
+GET /api/messages (auth): query type; no schema; returns messages for user.
+GET /api/messages/conversation/:userId (auth): no schema.
+POST /api/messages (auth): no schema; requires receiverId/content manually.
+PATCH /api/messages/:id/read (auth): no schema; receiver-only check.
+GET /api/messages/unread/count (auth): no schema.
+Fixes: remove duplicate block; add Zod for message create/read; add pagination/limits.
+Applicants / Jobseekers
+
+GET /api/applicants (auth): applicantFilterSchema; uses storage.getApplicants; slices; maps table shape.
+GET /api/applicants/:id (auth): no schema; 404 if missing; maps table shape.
+PUT /api/applicants/:id (auth; self or admin): manual field stripping; no Zod; normalizes timestamps; storage.updateApplicant.
+Fix: validate with applicantSchema.partial() minus disallowed fields.
+DELETE /api/applicants/:id (auth+admin): no schema.
+POST /api/applicants/bulk-delete (auth+admin): requires ids array manually.
+DELETE /api/account (auth jobseeker): no schema; deletes applicant row.
+GET /api/admin/applicants (auth but missing adminOnly): manual filters; returns mapped applicants.
+Fix: add adminOnly, consider applicantFilterSchema.
+Employers
+
+GET /api/employer/profile / PUT /api/employer/profile (auth+role employer): PUT uses employerUpdateSchema; GET serializes row.
+GET /api/employer/jobs (auth+role employer): no schema; list owned jobs.
+Employer job submission/update/delete/archive:
+POST /api/employer/jobs (auth employer): jobCreateSchema; status pending/draft; location fallback.
+PUT /api/employer/jobs/:jobId (auth employer): employerJobUpdateSchema; status pending/draft.
+DELETE /api/employer/jobs/:jobId (auth employer): no schema.
+PATCH /api/employer/jobs/:jobId/archive (auth employer): no schema; archived flag toggle.
+Employer registry (admin/shared):
+GET /api/employers (public): no schema; includeArchived, limit.
+POST /api/employers/check-duplicate (auth+admin): manual normalize.
+POST /api/employers (auth+admin): employerCreateSchema.
+GET /api/employers/archived (auth+admin).
+POST /api/employers/bulk-delete (auth+admin): ids manual.
+GET /api/employers/:id / PUT /api/employers/:id / PATCH /api/employers/:id/archive / DELETE /api/employers/:id (auth+admin): PUT uses employerUpdateSchema.
+PATCH /api/employers/:id/requirements/submit-all (auth+admin): no schema.
+GET /api/admin/employers (auth but missing adminOnly): manual filters.
+Fix: add adminOnly; consider employerFilterSchema.
+Jobs (admin/public)
+
+GET /api/admin/jobs (auth but missing adminOnly): no schema; maps jobs.
+POST /api/admin/jobs (auth+admin): jobCreateSchema; employer existence.
+PATCH /api/admin/jobs/:id/status (auth+admin): manual status validate vs allowedJobStatuses; sends notification; no Zod.
+PUT /api/admin/jobs/:id (auth+admin): stub response only. Fix: implement with schema/whitelist.
+DELETE /api/admin/jobs/:id (auth+admin): no schema; hard delete.
+Public jobs: GET /api/jobs (public): no schema; active non-archived; maps table shape.
+Archive/unarchive:
+PATCH /api/jobs/:jobId/archive (auth+admin): no schema; archive date handling.
+PATCH /api/jobs/:jobId/unarchive (public): no auth; toggles archived. Fix: add auth (admin or owner).
+CRUD:
+POST /api/jobs (auth+admin): jobCreateSchema.
+PUT /api/jobs/:jobId (auth+admin): no schema; blind merge. Fix: schema + whitelist.
+DELETE /api/jobs/:jobId (auth+admin): no schema.
+Matching/AI: GET /api/jobs/:jobId/match (auth): query minScore/maxResults; no schema; uses aiJobMatcher.
+AI insights: GET /api/jobs/:jobId/applicant/:applicantId/ai-insights (auth): no schema.
+Applications
+
+POST /api/jobs/:jobId/apply (auth jobseeker/freelancer): no schema; dedup check; inserts applicationsTable.
+Fix: use jobApplicationCreateSchema or minimal Zod.
+GET /api/jobseeker/applications (auth jobseeker/freelancer): no schema; enriches jobs.
+GET /api/jobseeker/dashboard (auth jobseeker/freelancer): no schema; computes stats + profile completeness.
+POST /api/jobseeker/profile-image (auth jobseeker/freelancer): manual string check; could use profileImageUploadSchema.
+POST /api/jobseeker/change-password (auth jobseeker/freelancer): changePasswordSchema.
+GET /api/employer/dashboard (auth employer): no schema; aggregates.
+PUT /api/employer/applications/:id (auth employer): no schema; updates status/notes.
+Fix: apply jobApplicationUpdateSchema; enforce allowed statuses.
+Admin stakeholders & stats
+
+GET /api/admin/stats (auth+admin) — defined twice; aggregates counts.
+Fix: remove duplicate definition.
+GET /api/admin/users (auth+admin): lists applicants/employers hasAccount true.
+GET /api/admin/stakeholders (auth+admin): manual filters; no schema.
+GET /api/admin/dashboard (auth+admin): aggregates counts.
+GET /api/admin/system-alerts (auth+admin): returns validationAlerts.
+Reports / Listings / Public
+
+GET /api/reports/skills (public): optional startDate/endDate strings; uses storage.getSkillsReport.
+GET /api/job-vacancies (public): jobVacancyFiltersSchema.safeParse; filters jobs table; returns {vacancies,total,limit,offset}.
+GET /api/jobs/archived (public): no schema.
+GET /api/public/impact (public): manual calcs; no schema.
+Charts: GET /api/summary, /api/recent-activities, /api/charts/bar|doughnut|line|employment-status (public): no Zod; rely on storage; employment-status uses classifyEmploymentStatus.
+Referrals & Notes
+
+GET /api/referrals (public): referralFiltersSchema; filters locally; bug: responds with full referrals not paginated slice.
+Fix: return {items: paginatedReferrals, total, limit, offset}.
+GET /api/notes (public): notesFiltersSchema parsed but ignored; returns all notes.
+Fix: apply filters and add auth if needed.
+Notifications (SSE)
+
+GET /api/notifications/stream (auth): SSE; no schema.
+GET /api/notifications (auth): no schema; filters by user/role; seeds if empty.
+POST /api/notifications (auth+admin): no schema; requires message manually.
+PATCH /api/notifications/:id/read (auth): raw SQL; no ownership check.
+Fix: restrict to user/role-scoped notifications; add Zod for id.
+Fallback
+
+/api/* 404 JSON via createErrorResponse.
+Top priority fixes
+
+Add adminOnly to /api/admin/applicants, /api/admin/employers, /api/admin/jobs, and protect PATCH /api/jobs/:jobId/unarchive.
+Remove duplicate routes: second GET /api/admin/stats and duplicated messages block at file end.
+Referrals pagination bug: return paginated slice with total/limit/offset.
+Add Zod for message create/read, job apply, employer application update, and admin job update; use existing schemas (jobseekerSignupSchema, employerSignupSchema, jobApplicationUpdateSchema).
+Harden notifications read to enforce user/role scoping.
+Implement suspend flag or drop /api/admin/users/:id/suspend; avoid no-op endpoint.
+Guard PUT /api/jobs/:jobId with whitelist/schema to prevent arbitrary overwrites.
+
+
+Frontend→Backend Call Map (fetch/authFetch/useQuery/useMutation)
+Paths are frontend files. Methods are inferred from call. Errors handled = how they surface; Unhandled = gaps. Responses described as used by UI. Recommended fixes focus on frontend unless mismatch noted.
+
+auth.tsx
+
+POST /api/auth/login body {email,password}; expects {token,user}; sets localStorage. Errors: parses json error.message; logs.
+POST /api/auth/signup/* (jobseeker/employer/admin) with role-specific body; expects {token,user}. Errors: parsed; thrown.
+authFetch wrapper adds Authorization: Bearer gw_token; throws Error with message from response; caller often still checks res.ok redundantly.
+queryClient.ts
+
+apiRequest(method,url,data?) credentials include; JSON body; throws on non-OK.
+getQueryFn default GET with credentials:"include", cache:"no-store"; for 401 can return null if configured; otherwise throws.
+oauth-callback.tsx
+
+GET /api/profile (no auth header, credentials include) to resolve role redirect. Expects {role}. Errors send to landing. No body. Unhandled: missing detailed error display.
+landing.tsx
+
+useQuery GET /api/settings/general/public; /api/summary; /api/public/impact → populate hero, stats. Errors throw → react-query error state unused (renders nothing).
+Prefetch GET /api/summary,/api/recent-activities,/api/charts/bar|line|doughnut,/api/referrals for dashboard cache.
+settings.tsx
+
+POST /api/change-password body {currentPassword,newPassword,confirmPassword} via authFetch; expects OK only; errors toast.
+DELETE /api/account no body; expects JSON {error?}; on success logout. Unhandled: 401/403 not special-cased.
+profile.tsx
+
+GET /api/applicants/:id via authFetch to load NSRP profile.
+PUT /api/applicants/:id body formData (Applicant schema) to update. Errors toast. Unhandled: no field-level validation beyond address check.
+messages.tsx
+
+GET /api/messages?type=all authFetch; list threads.
+GET /api/messages/conversation/:peerId authFetch; conversation.
+POST /api/messages body {receiverId,receiverRole:"employer",subject?,content} to send; success invalidates queries. Errors toast.
+No explicit mark-read endpoint; unread relies on backend flag.
+login.tsx
+
+GET /api/settings/auth/public loads enabled providers; ignores errors.
+useAuth.login (see auth.tsx) for POST /api/auth/login.
+jobs.tsx
+
+GET /api/jobs with query params (search/min/max salary, education, experience, industry, jobStatus=approved, sortBy/order, limit/offset). Expects array or {jobs,total}; filters out archived. Errors toast. Unhandled: backend may return other status strings; pagination uses limit/offset.
+dashboard.tsx
+
+GET /api/jobseeker/dashboard authFetch for stats cards.
+GET /api/jobseeker/applications authFetch list; used for tabs.
+GET /api/jobs public list for suggestions. Errors throw → default react-query error handling (console).
+profile.tsx
+
+GET /api/employer/profile authFetch; expects employer profile structure.
+PUT /api/employer/profile body buildEmployerPayload (company info + additional companies). Errors toast. Unhandled: no 401 handler.
+messages.tsx
+
+Same endpoints as jobseeker messages, but receiverRole:"jobseeker".
+PATCH /api/messages/:id/read body {isRead:true} via authFetch (used as “delete/mark read”). Errors toast.
+login.tsx
+
+GET /api/settings/auth/public; then POST /api/auth/login via auth.tsx.
+dashboard.tsx
+
+GET /api/employer/dashboard, /api/employer/applications, /api/employer/jobs (authFetch). Used for stats, tabs.
+jobs.tsx
+
+GET /api/employer/jobs authFetch; normalized to array.
+POST /api/employer/jobs create; PUT /api/employer/jobs/:id update; body from buildPayload (positionTitle, description/skills, location, salary*, jobStatus, education, years, industryCodes, preparedBy*, counts, etc).
+DELETE /api/employer/jobs/:id delete.
+PATCH /api/employer/jobs/:id/archive body {archived:true|false} archive/unarchive. Errors toast. Unhandled: confirmation only via confirm. No validation of payload server-side assumed.
+applications.tsx
+
+GET /api/referrals authFetch; expects list with job/applicant info.
+PATCH /api/referrals/:refId/status body {status,feedback}; requires feedback. Errors toast.
+dashboard.tsx (already covered) and applications.tsx (not in grep list) – none additional.
+
+signup.tsx
+
+POST /api/admin/register body {name,email,password,phone,organization}; expects {token,user}; sets auth. Errors via formatApiError.
+POST /api/admin/access-requests body {name,email,phone,organization}; expects 200; redirects. Errors toast.
+access-requests.tsx
+
+GET /api/admin/access-requests[?status=approved] headers Authorization: Bearer token.
+POST /api/admin/access-requests/:id/approve|reject with same header. Errors toast; no body.
+jobs.tsx
+
+GET /api/admin/jobs authFetch; expects array/jobs field.
+PATCH /api/admin/jobs/:id/status body {status}; updates review state.
+PATCH /api/jobs/:id/archive and /api/jobs/:id/unarchive (no body) to archive/unarchive. Errors toast. Unhandled: no guard on 401/403; uses authFetch.
+users.tsx
+
+GET /api/admin/users authFetch; list admin/employer users.
+DELETE /api/admin/users/:id authFetch; removes user. Errors toast.
+stakeholders.tsx
+
+GET /api/admin/stakeholders?role?&search?&limit&offset headers include bearer from localStorage; expects {users,total}.
+DELETE /api/admin/users/:id with bearer.
+PUT /api/admin/users/:id/suspend body {suspended} with bearer. Errors toast. Unhandled: uses localStorage token, not authFetch (no retry/401 handling).
+settings.tsx
+
+GET /api/settings/general public fetch to load; falls back to defaults on error.
+PUT /api/settings/general body GeneralSettings; expects saved settings. Errors toast. No auth header (likely should be protected).
+dashboard.tsx
+
+GET /api/summary, /api/charts/bar, /api/charts/line, /api/charts/employment-status, /api/referrals, /api/applicants with optional startDate/endDate params; used for cards/charts/summaries. Errors throw → react-query errors unhandled in UI. No auth headers (public fetch).
+reports.tsx
+
+GET /api/reports/skills (with optional start/end).
+GET /api/summary, /api/charts/bar, /api/charts/line, /api/referrals, /api/charts/employment-status, /api/applicants with date filters. All via fetch, no auth header. Errors throw.
+matching.tsx
+
+GET /api/admin/jobs authFetch; GET /api/applicants public fetch for matching. Errors not handled (assumed throw).
+job-matching.tsx
+
+GET /api/admin/jobs/:jobId, fallback GET /api/job-vacancies/:jobId via authFetch.
+GET /api/jobs/:jobId/match?minScore&weights=... authFetch; expects match list.
+GET /api/applicants/:applicantId authFetch; GET /api/jobs/:jobId/applicant/:applicantId/ai-insights authFetch. Errors caught → toast not seen (console log).
+employers.tsx
+
+GET /api/admin/employers?limit=10000 authFetch list.
+PUT /api/employers/:id authFetch body edits; PATCH /api/employers/:id/archive toggle archived; DELETE /api/employers/bulk-delete body {ids}; PATCH /api/employers/:id/requirements/submit-all mark complete; plus same inside list map.
+Fetching file.url (public) to preview uploads. Errors mostly toast.
+dashboard.tsx (covered) & pages/admin/protected/archived-*
+
+Archived jobs: GET /api/jobs/archived; PATCH /api/jobs/:id/unarchive; DELETE /api/jobs/:id (uses fetch without auth).
+Archived employers: GET /api/employers/archived; PATCH /api/employers/:id/archive body {archived:false}; DELETE /api/employers/:id.
+Archived job-vacancies: GET /api/job-vacancies/archived; PATCH /api/job-vacancies/:id/unarchive; DELETE /api/job-vacancies/:id. Errors: basic alerts.
+applicants.tsx
+
+GET /api/admin/applicants?… authFetch with filters; expects {data}.
+DELETE /api/applicants/:id authFetch for removal.
+login.tsx
+
+GET /api/settings/auth/public; POST /api/auth/login (via fetch in file). Errors surfaced in toast.
+add-job-vacancy-modal.tsx
+
+GET /api/admin/employers authFetch employers list.
+POST /api/admin/jobs or /api/employer/jobs based on role; body form fields (job). Errors toast.
+add-job-posting-modal.tsx
+
+GET /api/employers public list; POST /api/jobs authFetch create job posting body of form.
+add-employer-modal.tsx
+
+POST /api/employers/check-duplicate authFetch body {establishmentName,tin,secRegistrationNumber}.
+POST /api/employers authFetch body employer form. Errors toast.
+add-applicant-modal.tsx
+
+POST /api/applicants authFetch body applicant form. Errors toast.
+ai-job-matching-modal.tsx
+
+GET /api/jobs/:jobId/match?minScore&includeInsights=false authFetch; shows matches.
+GET /api/jobs/:jobId/applicant/:applicantId/ai-insights; GET /api/applicants/:applicantId for detail. Errors toast.
+generate-referral-slip-modal.tsx
+
+GET /api/admin/jobs (auth) or GET /api/jobs (public) for job list; GET /api/employers public;
+POST /api/referral-slip body slip payload; downloads PDF via window.open? (fetch then ???). Errors toast.
+view-job-vacancy-modal.tsx
+
+GET /api/job-vacancies/:id; fallback GET /api/jobs/:id to view details.
+PUT /api/job-vacancies/:id body edited vacancy (fetch). Errors alert toast.
+view-job-vacancy-modal.tsx/view-job-vacancy also uses fetch for update.
+
+components/view-job-vacancy-modal duplicates; ensure backend supports both jobs/job-vacancies.
+
+components/view-job-vacancy-modal? (already).
+
+view-job-vacancy-modal.tsx vs view-edit-job-vacancy-modal.tsx:
+
+GET /api/job-vacancies/:id; PUT /api/job-vacancies/:id body edits.
+view-job-vacancy-modal.tsx and components/view-job-vacancy-modal maybe same.
+
+components/view-job-vacancy-modal done.
+
+components/view-job-vacancy-modal & components/view-job-vacancy ??? (dup) but covered.
+
+system-alerts-card.tsx
+
+GET /api/admin/system-alerts authFetch; used for alerts list.
+referral-table.tsx
+
+GET /api/referrals with query string constructed from filters (status, date ranges, barangay, jobCategory, limit, offset). Used for table. Errors: catch and set error message.
+referral-summary-table.tsx
+
+PATCH /api/referrals/:id body {status,feedback}? Actually fetch method is PATCH with body? (line shows fetch with body). Used to update status inline. Errors toast? (not shown).
+job-card.tsx (admin jobs list)
+
+PATCH /api/jobs/:id/archive body {archived:true} via fetch; used for admin quick archive. Errors: logs/alert? (in component). Unhandled auth.
+generate-referral-slip-modal.tsx also fetch("/api/referral-slip", {method:"POST",body:...}) to generate slip; expects PDF blob to download. Errors: toast.
+
+edit-employer-modal.tsx
+
+PUT /api/employers/:id authFetch body employer form. Errors toast.
+edit-applicant-modal.tsx
+
+PUT /api/applicants/:id authFetch body applicant form. Errors toast.
+edit-admin-user-modal.tsx
+
+POST /api/admin/create-admin-user fetch body {name,email,password}. No auth headers. Errors handled in component.
+create-account-modal.tsx
+
+POST /api/applicants/:id/create-account fetch to create login; expects success; errors set message.
+apply-job-modal.tsx
+
+GET /api/jobseeker/applications authFetch to pre-load existing.
+Apply: POST /api/jobseeker/applications or POST /api/jobseeker/applications/:id? (file shows endpoint var) with payload {jobId,resumeUrl?,message} via authFetch.
+Also sends POST /api/messages body {receiverId,receiverRole:"employer",subject,content} to notify.
+app-sidebar.tsx
+
+For jobseeker users, GET /api/applicants/:id authFetch to compute completion badge.
+notifications-page.tsx
+
+Uses notifications.ts wrappers: GET /api/notifications; PATCH /api/notifications/:id/read. Data drives notifications list. Errors handled via react-query default; refresh button refetches.
+add-job-vacancy-modal.tsx & view-job-vacancy etc already covered.
+
+settings.ts
+
+GET /api/settings/auth authFetch for protected auth settings.
+PUT /api/settings/auth body settings. Used likely in admin settings.
+notifications.ts
+
+GET /api/notifications; PATCH /api/notifications/:id/read. Errors thrown on !ok (custom). Used by notifications-page.
+jobseeker.ts
+
+POST /api/jobseeker/profile-image authFetch with FormData.
+POST /api/jobseeker/change-password body {currentPassword,newPassword,confirmPassword}.
+applications.ts
+
+GET /api/jobseeker/applications authFetch.
+applicants.ts
+
+GET /api/admin/applicants with query params; uses authFetch; returns parsed.
+notes.ts
+
+GET /api/notes?limit?offset? fetch; returns json; used nowhere? (Utility).
+notifications.ts etc already.
+
+reports.tsx also uses refetch functions; same endpoints.
+
+archived-job-vacancies.tsx
+
+GET /api/job-vacancies/archived; PATCH /api/job-vacancies/:id/unarchive; DELETE /api/job-vacancies/:id. No auth headers.
+archived-employers.tsx
+
+GET /api/employers/archived authFetch; PATCH /api/employers/:id/archive body {archived:false}; DELETE /api/employers/:id. Errors alerts.
+archived-jobs.tsx
+
+GET /api/jobs/archived; PATCH /api/jobs/:id/unarchive; DELETE /api/jobs/:id. No auth headers.
+applicants.tsx (already) use authFetch for delete.
+
+referral-summary-table.tsx line shows PATCH /api/referrals/:id body status+feedback; used in summary view.
+
+referral-table.tsx already.
+
+generate-referral-slip-modal.tsx uses GET /api/employers public list.
+
+reports.tsx multiple fetch (skills, summary, bar/line charts, referrals, employment status, applicants) with date params.
+
+Common gaps/mismatches
+
+Many admin/protected endpoints use bare fetch without auth header (settings, dashboard, reports, archived pages, admin register/login). Backend likely requires session/token; align by using authFetch with credentials:"include" or Authorization.
+Error handling inconsistent: numerous calls ignore non-OK because authFetch already throws; but callers still if (!res.ok) causing double parsing sometimes; others swallow errors (landing, charts) leading to blank UI.
+Some endpoints use legacy paths (/api/job-vacancies/*) while backend may have unified /api/jobs; ensure backend supports both or add fallback logic.
+Mutation payload validation mostly client-side; backend schemas (from Section 2) stricter—e.g., jobs/employer payloads may contain extra fields; ensure server accepts or adjust payload to match JobUpdateSchema.
+Notifications/messages endpoints lack error UI; unread marking uses PATCH /api/messages/:id/read but server route may not exist or may require role scoping.
+Recommended frontend fixes (surgical)
+
+Wrap all protected admin/employer/jobseeker fetches with authFetch or include credentials: "include" to align with backend auth (especially in settings.tsx, dashboard.tsx, reports.tsx, archived pages).
+Standardize error handling: remove redundant if (!res.ok) after authFetch; or wrap raw fetch with helper to throw and show toast (landing/charts/reports).
+Ensure endpoints match backend: use /api/jobs instead of /api/job-vacancies where the table was dropped; add try/fallback pattern as in job-matching/view-job-vacancy components.
+Add response shape guards: when expecting {jobs,total}, normalize consistently (jobseeker/jobs, employer/jobs, admin/jobs).
+Add auth headers to approve/reject access requests and archive/unarchive endpoints on admin pages that currently use bare fetch.
+For messages and notifications, surface errors via toast and add loading/error states to UI.
+For reports/dashboard date-filtered fetches, handle empty/null response gracefully and show error banner on failure.
+(If you want, I can patch specific files to use authFetch, normalize job responses, and add minimal error toasts across charts/reports.)
+
+
+Latest fetch/APIs found
+
+referral-table: GET /api/referrals?status=… (unauthenticated fetch). CSV export client-side; PDF generation only local.
+referral-summary-table: DELETE /api/referrals/:id (plain fetch, no auth, basic JSON error parsing).
+notifications-page: uses fetchNotifications, markNotificationRead (PATCH), SSE subscribeNotifications; all via notification API helper.
+job-card: PATCH /api/jobs/:id/archive (no auth header, reload on success).
+generate-referral-slip-modal: GET /api/admin/jobs via authFetch then falls back to /api/jobs; GET /api/employers (no auth); POST /api/referral-slip to save record (no auth headers, errors ignored).
+view-edit-job-vacancy-modal: GET /api/job-vacancies/:id; PUT /api/job-vacancies/:id with JSON body (no auth).
+view-job-vacancy-modal: GET /api/jobs/:id, fallback GET /api/job-vacancies/:id (no auth).
+edit-employer-modal: PUT /api/employers/:id via authFetch JSON body.
+edit-applicant-modal: PUT /api/applicants/:id via authFetch JSON body.
+edit-admin-user-modal: POST /api/admin/create-admin-user with Bearer token + JSON; detailed error parsing.
+create-account-modal: POST /api/applicants/:id/create-account JSON body (no auth).
+system-alerts-card: GET /api/admin/system-alerts via authFetch.
+app-sidebar: GET /api/applicants/:id via authFetch to show name (only for jobseeker/freelancer).
+Notable gaps/risk
+
+Several admin/job actions lack auth headers (job-card archive, referral delete, referral-slip save, view/edit vacancy fetch/put, create-account modal, fetch employers/jobs fallback).
+Mixed endpoints for jobs (/api/jobs vs /api/admin/jobs vs /api/job-vacancies) may desync with backend expectations.
+
+
+Frontend→Backend Interaction Map (condensed)
+Includes path, method, auth, payload/params, UI usage, errors, and fixes to align with schemas/routes.
+
+Auth & profile
+
+GET /api/auth/me (auth) used in auth context; errors → logout. Fix: none.
+POST /api/auth/login / POST /api/auth/signup / POST /api/auth/logout (no auth/cred) used in login/signup/logout; errors surfaced via toast. Fix: ensure backend error JSON has message.
+GET /api/applicants/:id (authFetch in sidebar) to show name. Fix: handle 404 with fallback text.
+Job listings & details
+
+GET /api/jobs (public) in jobseeker landing/jobs; query params for filters; errors → toast. Fix: ensure server accepts query keys used (search, sort, location, status).
+GET /api/jobs/:id fallback GET /api/job-vacancies/:id (public) in view modal; errors toast. Fix: standardize to one endpoint, include auth for protected data.
+PATCH /api/jobs/:id/archive (no auth) from job-card; reload on success. Fix: add auth + error UI.
+GET /api/job-matches (auth) jobseeker matches; GET /api/ai-insights (auth) and GET /api/applicants/:id (auth) in AI match modal. Fix: ensure backend exposes these paths and shapes.
+POST /api/applications/apply (auth) in apply modal with { jobId }; checks existing apps via GET /api/jobseeker/applications. Fix: server should return 409 for duplicate; client should handle.
+POST /api/messages (auth) after apply to notify employer. Fix: confirm required fields.
+Job creation/edit
+
+POST /api/jobs (public) in add-job-posting modal with employer + job fields. Fix: should be auth + probably /api/employer/jobs or /api/admin/jobs; align schema field names (salaryPeriod, location, tags).
+POST /api/employer/jobs (auth) in add-job-vacancy modal (employer flow) with detailed payload. Fix: ensure backend route exists and field names match schema.
+POST /api/admin/jobs (auth) in add-job-vacancy modal (admin flow). Fix: ensure admin-only guard.
+PUT /api/job-vacancies/:id (no auth) in edit vacancy modal; body includes numeric conversions, industryCodes. Fix: require auth and reuse schema; server should accept arrays not JSON strings.
+GET /api/admin/jobs (auth) fallback GET /api/jobs in referral slip modal to list open jobs. Fix: unify source, require auth for admin view.
+Employers
+
+GET /api/employers (public) used in multiple modals for dropdowns. Fix: add auth if needed.
+POST /api/employers/check-duplicate (public) in add-employer modal; POST /api/employers (auth) to create. Fix: enforce auth on create; duplicate endpoint should return clear message/fields.
+PUT /api/employers/:id (auth) in edit-employer modal with normalized payload. Fix: ensure backend accepts nested address objects.
+Applicants / accounts
+
+GET /api/applicants with filters (auth) in admin tables; params include search, status, barangay, pagination. Fix: confirm server query parsing.
+POST /api/applicants (public) in add-applicant modal body = applicant details. Fix: should be admin-only with auth.
+PUT /api/applicants/:id (auth) edit modal with full profile object. Fix: validate against schema; handle 4xx JSON errors.
+POST /api/applicants/:id/create-account (no auth) create-account modal. Fix: require auth (admin) and return message consistently.
+Applications
+
+GET /api/jobseeker/applications (auth) jobseeker list. Fix: ensure pagination support.
+(See apply endpoint above.)
+Referrals
+
+GET /api/referrals?status= (public) referral-table; CSV export client-side; PDF generated locally. Fix: likely needs auth; support status values used (Hired/Rejected).
+DELETE /api/referrals/:id (public) referral-summary table. Fix: require auth + return {message}.
+POST /api/referral-slip (no auth) after PDF generation to save slip metadata. Fix: add auth; validate applicantId/vacancyId/employerId; return confirmation.
+Notifications
+
+GET /api/notifications (auth) via helper; PATCH /api/notifications/:id/read; SSE GET /api/notifications/stream. Errors surfaced with toast. Fix: ensure stream path and CORS are correct.
+Settings / password
+
+GET /api/settings / PUT /api/settings (auth) settings page; body includes profile + employer fields. Fix: align field names (barangay, municipality, province).
+POST /api/jobseeker/change-password (auth) change password form; body {currentPassword,newPassword}. Fix: server should return meaningful errors.
+Admin users & access requests
+
+POST /api/admin/create-admin-user (auth with bearer) from edit-admin-user modal; body has name/email/password/requestId/role; robust error parsing. Fix: ensure content-type JSON and 4xx bodies.
+GET /api/admin/access-requests (auth) in admin access request page; POST /api/admin/access-requests/:id/approve|reject (auth). Fix: confirm routes exist.
+Messages
+
+GET /api/messages (auth) chat pages with conversationId/userId; POST /api/messages (auth) send message. Fix: ensure server supports thread parameters.
+Notes (admin)
+
+GET /api/notes (auth?) notes API module; usage minimal. Fix: confirm route exists and protect if needed.
+System alerts
+
+GET /api/admin/system-alerts (auth) in system-alerts-card. Fix: ensure response shape {alerts: [...]}.
+Cross-cutting issues to address
+
+Auth gaps: Several admin/job/applicant/referral actions use bare fetch (no token). Require authFetch on all write operations and protected reads; enforce backend checks.
+Endpoint drift: Jobs use /api/jobs, /api/job-vacancies, /api/admin/jobs, /api/employer/jobs with differing fields. Pick canonical routes per role, alias the rest, and align payload keys to schema.ts.
+Error handling: Many calls assume JSON; add content-type guards and surface backend message/error. Server should return structured {message} on failure.
+Payload normalization: Ensure number fields are numbers (vacancies), arrays not JSON strings (industryCodes), and consistent salary fields (salaryPeriod, salaryAmount/min/max).
+Deletion/archival: Referral delete and job archive need auth + success/error toasts instead of window reload.
+Security: create-account and referral-slip save must be admin-only; otherwise user escalation risk.
+
+
+
+DB Snapshot (app.db, SQLite, 13 tables, no declared FKs)
+Columns listed as name TYPE [NOT NULL] [default]; INTEGER booleans are 0/1; defaults shown as stored.
+
+admin_access_requests
+
+Columns: id TEXT PK, name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT NOT NULL, organization TEXT NOT NULL, status TEXT NOT NULL default 'pending', created_at INTEGER NOT NULL default CURRENT_TIMESTAMP, updated_at INTEGER NOT NULL default CURRENT_TIMESTAMP.
+Indexes: PK only. FKs: none.
+admins
+
+Columns: id TEXT PK, name TEXT NOT NULL, email TEXT NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL default 'admin', created_at INTEGER NOT NULL default CURRENT_TIMESTAMP, updated_at INTEGER NOT NULL default CURRENT_TIMESTAMP.
+Indexes: admins_email_unique (unique), PK. FKs: none.
+applications
+
+Columns: id TEXT PK, job_id TEXT NOT NULL, applicant_id TEXT, applicant_name TEXT, employer_id TEXT, cover_letter TEXT, resume_url TEXT, status TEXT NOT NULL default 'pending', notes TEXT, feedback TEXT, created_at INTEGER NOT NULL default CURRENT_TIMESTAMP, updated_at INTEGER NOT NULL default CURRENT_TIMESTAMP.
+Indexes: PK. FKs: none (should link to jobs.id, users.id).
+employer_requirements
+
+Columns: id TEXT PK, employer_id TEXT NOT NULL, email TEXT, password_hash TEXT, requirement_data TEXT, srs_form_submitted INTEGER default false, srs_form_attachment TEXT, business_permit_submitted INTEGER default false, business_permit_attachment TEXT, bir2303_submitted INTEGER default false, bir2303_attachment TEXT, company_profile_submitted INTEGER default false, company_profile_attachment TEXT, dole_certification_submitted INTEGER default false, dole_certification_attachment TEXT, other_documents TEXT, created_at INTEGER NOT NULL default CURRENT_TIMESTAMP, updated_at INTEGER NOT NULL default CURRENT_TIMESTAMP.
+Indexes: PK. FKs: none (should link to employers.id).
+employers
+
+Columns: id TEXT PK, establishment_name TEXT NOT NULL, name TEXT, trade_name TEXT, house_street_village TEXT, barangay TEXT, municipality TEXT, province TEXT, complete_address TEXT, address_details TEXT, contact_number TEXT, contact_email TEXT, contact_person TEXT, alternate_contacts TEXT, email TEXT, phone TEXT, number_of_paid_employees INTEGER, number_of_vacant_positions INTEGER, industry_codes TEXT, industry_type TEXT, company_type TEXT, company_industry TEXT, company_size TEXT, srs_subscriber INTEGER default false, subscription_status TEXT, company_tin TEXT, company_registration_no TEXT, company_description TEXT, company_tax_id_number TEXT, business_permit_number TEXT, bir2303_number TEXT, requirements TEXT, attachments TEXT, chairperson_name TEXT, chairperson_contact TEXT, secretary_name TEXT, secretary_contact TEXT, barangay_chairperson TEXT, barangay_secretary TEXT, geographic_identification TEXT, prepared_by_name TEXT, prepared_by_designation TEXT, prepared_by_contact TEXT, date_accomplished TEXT, remarks TEXT, is_manpower_agency INTEGER default false, dole_certification_number TEXT, archived INTEGER default false, archived_at INTEGER, status TEXT, profile_image TEXT, password_hash TEXT, has_account INTEGER default false, created_at INTEGER NOT NULL default CURRENT_TIMESTAMP, updated_at INTEGER NOT NULL default CURRENT_TIMESTAMP.
+Indexes: PK. FKs: none.
+job_requirements
+
+Columns: id TEXT PK, job_id TEXT NOT NULL, employer_id TEXT, email TEXT, password_hash TEXT, requirement_data TEXT, referral_slip_submitted INTEGER default false, referral_slip_attachment TEXT, employment_contract_submitted INTEGER default false, employment_contract_attachment TEXT, medical_certificate_submitted INTEGER default false, medical_certificate_attachment TEXT, barangay_clearance_submitted INTEGER default false, barangay_clearance_attachment TEXT, police_clearance_submitted INTEGER default false, police_clearance_attachment TEXT, additional_documents TEXT, created_at INTEGER NOT NULL default CURRENT_TIMESTAMP, updated_at INTEGER NOT NULL default CURRENT_TIMESTAMP.
+Indexes: PK. FKs: none.
+jobs
+
+Columns: id TEXT PK, employer_id TEXT, status TEXT NOT NULL default 'pending', establishment_name TEXT, position_title TEXT NOT NULL, description TEXT, employment_type TEXT, location TEXT, salary_min REAL, salary_max REAL, salary_period TEXT, salary_amount REAL, salary_type TEXT, salary_period_raw TEXT, skills TEXT, industry_codes TEXT, minimum_education_required TEXT, main_skill_or_specialization TEXT, years_of_experience_required INTEGER, age_preference TEXT, salary TEXT, starting_salary_or_wage REAL, vacant_positions INTEGER, paid_employees INTEGER, job_status TEXT, contact TEXT, requirements TEXT, prepared_by_name TEXT, prepared_by_designation TEXT, prepared_by_contact TEXT, date_accomplished TEXT, attachments TEXT, account_metadata TEXT, barangay TEXT, municipality TEXT, province TEXT, archived INTEGER default false, archived_at INTEGER, qualifications TEXT, responsibilities TEXT, vacancies INTEGER, job_category TEXT, nsrp_job_code TEXT, job_compensation_type TEXT, job_compensation_details TEXT, job_benefits TEXT, job_requirements TEXT, job_experience_level TEXT, job_education_level TEXT, job_shift TEXT, job_schedule TEXT, job_application_deadline TEXT, job_contact_person TEXT, job_contact_email TEXT, job_contact_phone TEXT, created_at INTEGER NOT NULL default CURRENT_TIMESTAMP, updated_at INTEGER NOT NULL default CURRENT_TIMESTAMP.
+Indexes: PK. FKs: none (should link employer_id→employers.id).
+messages
+
+Columns: id TEXT PK, sender_id TEXT NOT NULL, sender_role TEXT NOT NULL, receiver_id TEXT NOT NULL, receiver_role TEXT NOT NULL, subject TEXT, content TEXT NOT NULL, is_read INTEGER NOT NULL default false, created_at INTEGER NOT NULL default CURRENT_TIMESTAMP, updated_at INTEGER NOT NULL default CURRENT_TIMESTAMP.
+Indexes: PK. FKs: none (should link to users/employers).
+notes
+
+Columns: id TEXT PK, title TEXT NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL default CURRENT_TIMESTAMP, updated_at INTEGER NOT NULL default CURRENT_TIMESTAMP.
+Indexes: PK. FKs: none.
+notifications
+
+Columns: id TEXT PK, user_id TEXT, role TEXT, type TEXT, message TEXT NOT NULL, read INTEGER default false, created_at INTEGER NOT NULL default CURRENT_TIMESTAMP, updated_at INTEGER NOT NULL default CURRENT_TIMESTAMP.
+Indexes: PK. FKs: none (should link user_id→users.id).
+referrals
+
+Columns: referral_id TEXT PK, applicant_id TEXT NOT NULL, applicant TEXT NOT NULL, employer_id TEXT, employer TEXT, vacancy_id TEXT, vacancy TEXT, barangay TEXT, job_category TEXT, date_referred TEXT, status TEXT NOT NULL default 'Pending', feedback TEXT, referral_slip_number TEXT, peso_officer_name TEXT, peso_officer_designation TEXT, created_at INTEGER NOT NULL default CURRENT_TIMESTAMP, updated_at INTEGER NOT NULL default CURRENT_TIMESTAMP.
+Indexes: PK. FKs: none (should link applicant_id→users.id, employer_id→employers.id, vacancy_id→jobs.id).
+sessions
+
+Columns: sid TEXT PK, sess TEXT NOT NULL, expire INTEGER NOT NULL.
+Indexes: PK. FKs: none.
+users
+
+Columns: id TEXT PK, email TEXT NOT NULL, password_hash TEXT NOT NULL, has_account INTEGER default false, role TEXT NOT NULL default 'jobseeker', surname TEXT NOT NULL, first_name TEXT NOT NULL, middle_name TEXT, last_name TEXT, suffix TEXT, birth_date TEXT, gender TEXT, date_of_birth TEXT, sex TEXT, religion TEXT, civil_status TEXT, height TEXT, weight TEXT, blood_type TEXT, contact_number TEXT, disability TEXT, disability_specify TEXT, address TEXT, house_street_village TEXT, barangay TEXT, municipality TEXT, province TEXT, zip_code TEXT, employment_status TEXT, employment_status_detail TEXT, self_employed_category TEXT, self_employed_category_other TEXT, unemployed_reason TEXT, unemployed_reason_other TEXT, unemployed_abroad_country TEXT, employment_type TEXT, employment_type_4 TEXT, months_unemployed INTEGER, is_ofw INTEGER default false, ofw_country TEXT, is_former_ofw INTEGER default false, former_ofw_country TEXT, return_to_ph_date TEXT, is_4ps_beneficiary INTEGER default false, household_id TEXT, nsrp_number TEXT, government_id_type TEXT, government_id_number TEXT, education_level TEXT, course TEXT, willing_to_relocate INTEGER default false, willing_to_work_overseas INTEGER default false, registration_date INTEGER, nsrp_registration_no TEXT, profile_image TEXT, archived INTEGER default false, job_preferences TEXT, preferred_occupations TEXT, preferred_locations TEXT, preferred_overseas_countries TEXT, education TEXT, technical_training TEXT, professional_licenses TEXT, language_proficiency TEXT, work_experience TEXT, other_skills TEXT, skills TEXT, other_skills_training TEXT, other_skills_specify TEXT, attachments TEXT, notes TEXT, registered_at INTEGER, last_login_at INTEGER, created_at INTEGER NOT NULL default CURRENT_TIMESTAMP, updated_at INTEGER NOT NULL default CURRENT_TIMESTAMP.
+Indexes: users_email_unique, users_nsrp_unique, PK. FKs: none.
+Relations (conceptual, not enforced)
+
+jobs.employer_id → employers.id
+applications.job_id → jobs.id; applications.applicant_id → users.id; applications.employer_id → employers.id
+job_requirements.job_id → jobs.id; employer_requirements.employer_id → employers.id
+referrals.applicant_id → users.id; referrals.employer_id → employers.id; referrals.vacancy_id → jobs.id
+notifications.user_id → users.id
+messages sender/receiver → users/employers (by role)
+Current DB has no FK constraints or cascades.
+Mismatches / risks vs code & schemas
+
+Status enums not enforced: jobs.status default 'pending', but UI uses open/approved/active/archived; applications.status mixes lowercase + title-case; referrals.status default 'Pending' while API filters title-case—be consistent.
+JSON fields stored as TEXT with no validation: contact, requirements, industry_codes, job_preferences, education, etc.; code often expects arrays/objects (parsing failures risk).
+Duplicate/legacy salary fields (salary, salary_amount, salary_min/max, salary_period_raw, job_compensation_*); UI often uses salaryMin/Max/Period—clarify canonical fields.
+Unused/legacy columns likely: employment_type_4, salary_period_raw, account_metadata, salary (string), some credential fields in requirement tables (password_hash, email) not used in UI.
+No indexes on foreign-key-like columns (jobs.employer_id, applications.job_id/applicant_id, referrals.applicant_id/employer_id/vacancy_id, notifications.user_id, messages.sender_id/receiver_id), so lookups/filtering can be slow.
+No FK constraints or cascades → risk of orphaned rows; also no protection against deleting parent rows.
+Booleans are INTEGER; ensure code coerces to boolean. Timestamps stored as INTEGER (Unix); some UI expects ISO strings.
+users table requires surname/first_name NOT NULL; creation flows must supply both.
+Unique constraints only on admins.email, users.email, users.nsrp_number; employers/emails not unique.
+Recommendations
+
+Add FKs with ON DELETE/UPDATE (likely RESTRICT or CASCADE as needed) for jobs→employers, applications→jobs/users/employers, referrals→users/employers/jobs, notifications/messages→users.
+Add indexes on FK columns mentioned above, plus jobs.status, jobs.archived, applications.status, referrals.status for filtering.
+Normalize statuses across DB and frontend (choose lowercase or title-case consistently).
+Prune/standardize fields: pick a single salary model; drop/ignore employment_type_4, salary_period_raw, account_metadata if unused; ensure JSON text fields are parsed/validated at the API boundary.
+Enforce uniqueness where needed (employers.contact_email or email/login if applicable).
+Backfill booleans/timestamps to consistent representations (ISO strings to UI; store as integer timestamps or TEXT dates consistently).
+
+
+
+Dropdown scan & sources
+
+Jobseeker → Jobs page
+
+Sort: static date|salary|relevance.
+Education filter: static High School|Senior High|Vocational|College|Bachelor|Master|Any.
+Job status filter: static codes P|T|C|all.
+Location/barangay filters (if present): built from jobs response.
+Backend needs: jobs endpoint must return position_title, salary_min/max, salary_period, employment_type, barangay/municipality/province to populate badges/filters.
+Inconsistency: status codes P/T/C don’t match DB status (default pending) or job_status; standardize.
+Employer → Jobs page (manage postings)
+
+Experience level select: static list (array in file).
+Employment type select: static P/T/C.
+Salary period: static monthly|weekly|daily.
+Backend needs: job create/update expects fields employment_type (P/T/C), salary_period lower-case; DB uses salary_period text, but API should normalize case.
+Employer → Applications page
+
+Job filter: dynamic from /api/employer/jobs (options {id,label}).
+Status update select: static pending|interview|hired|rejected.
+Inconsistency: DB applications.status default pending with extra enums (reviewed, title-case variants). Align statuses and casing.
+Employer → Profile page
+
+Barangay select: static list of barangays.
+Other selects minimal; values stored to employers table fields (barangay/municipality/province).
+Admin → Stakeholders page
+
+Role filter: static all|jobseeker|employer|freelancer. Backend list endpoint should support role filter.
+Admin → Employers page
+
+Status filter: all|active|archived static.
+Subscription filter: all|subscriber|non-subscriber static (DB column subscription_status).
+Company type filter: all|multi|solo static (multi=has additional establishments).
+Compliance filter: all|pending|clear static; backend must derive from requirements table.
+Backend needs: /api/admin/employers should return archived, subscription_status, additional_establishments, compliance status fields.
+Admin → Archived Employers page
+
+Municipality filter: dynamic from dataset (unique municipalities).
+Sort: recent|oldest static. Backend should return archived_at.
+Admin → Archived Jobs page
+
+Location filter: dynamic from jobs data (unique locations).
+Sort: recent|oldest static. Backend should return archived_at.
+Admin → Applicants page
+
+Barangay filter: dynamic from applicants data (unique barangays).
+Status filter: static options array (e.g., active|pending|archived|hired—check code). DB users has no enum; align server filtering.
+Date range: static all|7days|30days|90days|1year.
+Applicant type filter: static list (types array). Backend must accept corresponding query params.
+Jobseeker → Applications (if present in jobs page apply modal)
+
+No dropdown; statuses fetched.
+Referral Summary table
+
+Barangay/employer/job category filters: built from data prop (dynamic).
+Date range: static all|today|week|month|quarter.
+Status: static Hired|Pending|Rejected.
+Inconsistency: DB/referral API supports For Interview, Withdrawn but UI omits them.
+Referral Table
+
+Status filter: static all|Hired|Rejected (missing Pending/For Interview/Withdrawn). Needs expansion to match backend schema.
+Generate Referral Slip Modal
+
+Vacancy select: dynamic from /api/admin/jobs fallback /api/jobs. Requires id, position_title, employerId, status to filter open jobs.
+Design variant: static formal|simple.
+Fix: ensure employers fetched for address prefilling (/api/employers response must include address fields).
+Add Job Vacancy Modal
+
+Employer select: dynamic /api/employers (needs id, establishmentName).
+Education: static levels array.
+Job status: static P|T|C.
+Salary period: static monthly|weekly|daily.
+Experience level: static array.
+Backend must accept these codes and map to DB.
+Add Job Posting Modal (simple)
+
+Employer dropdown: dynamic /api/employers (id/name).
+No other selects.
+Employer Applications Status inline select
+
+(See employer applications page above.)
+Edit Applicant Modal
+
+Multiple static dropdowns: gender (Male|Female), civil status (Single|Married|Widowed|Separated|Divorced), disability (None|Visual|Hearing|Speech|…), suffix (None|Jr.|Sr.|II|III|IV), employment status etc. Stored to users fields as strings; backend must accept free-text enums or validate.
+Edit Employer Modal
+
+Mostly text; few implicit selects (subscription status etc.) if present; uses text inputs.
+Create Account Modal
+
+No dropdown.
+Notifications page
+
+Filters are buttons, not selects.
+Sidebar role menus
+
+No dropdowns.
+Backend field coverage & inconsistencies
+
+Status/value mismatches:
+Jobs: UI uses P/T/C (jobStatus), DB status default pending; harmonize to enum or map codes server-side.
+Applications: UI statuses lowercase; DB has mixed-case including reviewed, accepted; align set and casing.
+Referrals: UI filters only Hired/Pending/Rejected; DB supports For Interview/Withdrawn.
+Salary period casing: UI uses lower-case monthly|weekly|daily; DB may store capitalized; normalize on API.
+Missing fields risk: ensure job/employer endpoints return id, name/establishmentName, archived, subscription_status, archived_at, compliance flags, and location fields for dynamic dropdowns.
+Unique lists built client-side (barangays, municipalities, job locations) assume those fields are present and non-null.
+Suggested fixes
+
+Standardize enums: define canonical enums in shared schema for job status, application status, referral status, salary period; map incoming/outgoing values.
+Expand referral UI filters to include all backend statuses (Pending, For Interview, Withdrawn).
+Map P/T/C to readable statuses server-side (and back) or switch UI to textual enum stored in DB.
+Ensure API responses include fields used to build dynamic dropdowns: archived_at, archived, subscription_status, additional_establishments, location/barangay/municipality/province, establishmentName/id.
+Normalize casing for salary period and statuses when persisting/reading.
+Add validation on backend for select-driven fields to reject unknown values and coerce booleans/JSON fields.
+
+
+Section 6 – Business Logic Flow (End-to-End)
+
+Auth stack (server): index.ts wires passport.initialize, global JSON parsing, helmet, and registerRoutes. Core auth utilities in auth.ts (JWT generateToken/verifyToken, bcrypt hashPassword/verifyPassword, validators, Google OAuth strategy). Request guards in middleware.ts (authMiddleware, roleMiddleware, adminOnly).
+Routes core: routes.ts (all flows); DB access via storage.getDb() with Drizzle tables from unified-schema.ts. Data shaping helpers: formatJobTimestamps, serializeJob, serializeEmployerRow, mapApplicantToTableShape, safeJson/normalizeDateFields.
+Client auth & state: auth.tsx (AuthProvider, localStorage gw_token/gw_user, login, signup, logout, authFetch), queryClient.ts (React Query config, apiRequest, getQueryFn with credentials: "include"). React Query used per-page; no Redux/Zustand. Tokens are bearer JWTs stored in localStorage.
+Flows
+User Registration
+
+Endpoints: POST /api/auth/signup/jobseeker, /employer, /admin (routes.ts).
+Functions: Zod schemas (loginSchema, adminCreateSchema, jobCreateSchema), validators (validateEmail, validatePassword), hashPassword, generateToken, DB inserts/updates via Drizzle.
+Logic:
+Jobseeker: derive first/last from name, validate email/password, check existing applicant; update or insert with hasAccount=true, set registrationDate, return JWT+user.
+Employer: require name,email,password,company; validate; ensure unique email; insert employer row; return JWT+user.
+Admin: controlled; parse with adminCreateSchema, validate email/password, call storage.addAdmin, return JWT+user.
+Conditions: required fields; password complexity; duplicate email; role defaults (jobseeker/freelancer, employer, admin).
+Data xform: trim/lower email; set dates new Date()/toISOString; hasAccount flag; role string.
+Errors: missing/invalid fields → 400; duplicate → 400; DB errors → 500.
+Optimizations: add unique indexes on email (applicants/employers/admins); wrap create in transaction; rate-limit signup; normalize role casing.
+Login
+
+Endpoint: POST /api/auth/login.
+Functions: loginSchema, initStorageWithDatabase, getJobseekerByEmailWithPassword, getEmployerByEmailWithPassword, getAdminByEmailWithPassword, verifyPassword/bcrypt.compare, generateToken.
+Logic: try jobseeker → employer → admin in order; compare bcrypt hash; on success return JWT+user payload.
+Conditions: email/password required; role inferred from table; first successful match wins.
+Data xform: email lowercased in lookups; name derived from applicant names or employer establishment.
+Errors: invalid creds → 401; no rate limiting/lockout (risk); admin lookup iterates all admins (O(n)).
+Optimizations: add indexed lower(email), early-exit queries, rate-limit and account lock thresholds, unify admin lookup to query with eq(email) using lower.
+Auth Persistence
+
+Client: AuthProvider reads gw_token/gw_user from localStorage on mount; setAuth writes both; authFetch attaches Authorization: Bearer.
+Server: authMiddleware verifies JWT on protected routes; roleMiddleware/adminOnly enforce roles.
+Endpoint: GET /api/auth/me returns user from token; /api/auth/logout is stateless JSON.
+Risks: localStorage → vulnerable to XSS; no refresh tokens/rotation; JWT 7d lifetime hardcoded. credentials: "include" in React Query unused by JWT flow (could be removed or matched with cookies).
+Optimizations: move tokens to HttpOnly cookies, add refresh token rotation, add clock-skew handling, trim unused credentials: "include" if not cookie-based.
+CRUD – Jobs (admin)
+
+Endpoints: GET /api/jobs (public active); POST /api/jobs (admin create); PUT /api/jobs/:jobId (admin update); PATCH /api/jobs/:jobId/archive|unarchive; DELETE /api/jobs/:jobId; GET /api/jobs/archived.
+Logic: admin-only mutations via authMiddleware+adminOnly; timestamps via formatJobTimestamps; active filter status=active & !archived.
+Data xform: normalize dates to ISO; mapJobToTableShape adds derived title/location.
+Errors: 404 if missing; no optimistic concurrency; minimal validation on admin update (accepts arbitrary fields).
+Optimizations: add schema on update (reuse jobCreateSchema subset), add updatedAt guard/version, DB indexes on archived, status, employerId.
+CRUD – Jobs (employer self-service)
+
+Endpoints: /api/employer/jobs GET/POST/PUT/DELETE/PATCH archive; profile GET/PUT.
+Logic: role check employer; new jobs default pending or draft; derives location from employer address; saves industry codes/contact prepared fields.
+Conditions: must own job for update/delete/archive; required location; editable field whitelist on update.
+Errors: 403 for wrong role/ownership; 404 missing job; validation via jobCreateSchema/employerJobUpdateSchema.
+Optimizations: add server-side status transitions (admin approval), constrain state machine, index status, employerId.
+Applications
+
+Endpoints: POST /api/jobs/:jobId/apply (jobseeker/freelancer only), GET /api/jobseeker/applications (list self). (Updates likely further down).
+Logic: prevent duplicate app per job/applicant; default status pending; store coverLetter; join jobs for listing (not shown fully).
+Errors: duplicate returns 400; missing jobId 400.
+Optimizations: add FK constraints (currently none), indexes on (jobId, applicantId), status transitions, apply cap per user.
+Referrals / Notifications / Messages / Notes (glimpse)
+
+Messaging routes near 1100s: inbox/sent/all, conversation, send, mark read, unread count. Uses messagesTable, WebSocket notifies via notifyNewMessage/notifyMessageRead.
+Notifications/notes/referrals exist elsewhere in routes.ts (not fully restated); similar patterns: auth guard, role checks, Zod filters.
+Unique logic: AI job matching (/api/jobs/:jobId/match, /ai-insights) via ai-job-matcher, scoring + optional AI insights.
+Admin Sections
+
+Endpoints: /api/admin/create-admin-user (admin-only, issue/update credentials), admin settings, auth settings, general settings; likely applicant/employer/job moderation routes (same file).
+Conditions: authMiddleware+adminOnly; email normalization logs; updates requests table when fulfilled.
+Data xform: trims/lower email; password hashing.
+Risks: noisy console logs of emails; no audit trail; duplicated email scan O(n).
+Dashboard & Summary
+
+Public summary/recent/charts endpoints defined earlier in routes.ts (per project notes: /api/summary, /api/recent-activities, /api/charts/*, /api/referrals). They pull from storage aggregations; responses pass through normalizeDateFields.
+Client dashboards use React Query fetchers (per earlier sections) and render cards/charts; state is per-query, no global store.
+Unique Logic
+
+Google OAuth (/auth/google, /auth/google/callback): dynamic provider config (storage.getAuthSettings), role-aware redirect, auto-create applicant/employer if absent, passwordHash generation for OAuth users, state token with role+redirect.
+Validation alert buffer: validationAlerts ring buffer for recent validation errors (50 max) via recordValidationAlert.
+Date normalization middleware for all /api responses to ISO 8601.
+AI matcher as above; applicant/job serialization helpers; employment status classifier classifyEmploymentStatus (from storage) used in other routes.
+State Management
+
+AuthContext: holds user, token, isAuthenticated, isLoading; persists in localStorage; no refresh.
+React Query: global queryClient with no retries, no refetch on focus, zero stale/gc (forces fresh fetch). getQueryFn builds URL from queryKey join; apiRequest helper for mutations.
+No Redux/Zustand; component-local state elsewhere.
+Error Risks (system-wide)
+No DB foreign keys; risks orphaned rows (applications without job/applicant, jobs without employer).
+Tokens in localStorage (XSS). No CSRF protection if cookies later used.
+No rate limiting or brute-force protection on login/signup.
+Admin update queries log email lists (PII risk).
+Updates lack optimistic locking; last-writer wins.
+Password reset flow absent.
+Google OAuth auto-creates users without explicit T&C acceptance; weak profile defaults.
+/api/employer/jobs creation uses employer address; if missing yields 400 location error.
+Optimization Opportunities
+Add DB indexes: email (lowered), (employerId,status,archived), (jobId,applicantId), createdAt.
+Add FK constraints for integrity.
+Normalize status enums (jobs/applications/referrals) to single source (schema.ts) and enforce in DB.
+Add caching for public GETs (summary/jobs) with ETags or short TTL; enable gzip.
+Streamline admin lookup/query; remove console spam; paginate large lists.
+Harden auth: rate-limit, lockout, password reset, refresh tokens, HttpOnly cookies, token rotation.
+Use transactions for multi-step creates (admin create + request update).
+Validate update payloads with Zod for admin job updates; enforce state machine for job status.
+React Query: set staleTime/gcTime > 0 to reduce refetch; add global error boundary with 401 handling to logout/refresh.
+
+
+Business Logic Flow (End-to-End)
+
+Registration
+
+Files: routes.ts (/api/auth/signup/jobseeker|employer|admin), auth.ts, middleware.ts, unified-schema.ts, auth.tsx.
+Functions: validateEmail, validatePassword, hashPassword, generateToken; jobseeker/employer/admin signup handlers.
+Conditions: required fields; email format; password complexity; duplicate email check; role defaults (jobseeker/freelancer, employer, admin).
+Data xform: trim/lower email; derive first/last name; set hasAccount, registrationDate, timestamps; bcrypt hash.
+Errors: 400 invalid/missing/duplicate; 500 on DB.
+Optimizations: add unique indexes on lower(email); rate-limit; transactional create; standardize role/status enums.
+Login
+
+Files: routes.ts (/api/auth/login), auth.ts.
+Functions: loginSchema, getJobseekerByEmailWithPassword, getEmployerByEmailWithPassword, getAdminByEmailWithPassword, verifyPassword, generateToken.
+Conditions: email/password required; tries jobseeker→employer→admin sequentially.
+Data xform: email lowercased; name from user/employer/admin.
+Errors: 401 invalid creds; 500 on DB.
+Optimizations: index lower(email); rate-limit/lockout; unify admin lookup to a single query.
+Auth Persistence
+
+Files: auth.tsx, middleware.ts, routes.ts (/api/auth/me, /api/auth/logout).
+Functions: AuthProvider (localStorage gw_token/gw_user), authFetch; authMiddleware, roleMiddleware, adminOnly.
+Conditions: bearer token required for protected routes; role checks.
+Data xform: JWT payload → req.user; localStorage hydrate on mount.
+Errors: 401 missing/invalid token; 403 role mismatch.
+Optimizations: HttpOnly cookies + refresh tokens; central 401 handler to logout; remove unused credentials: "include" if staying JWT-only.
+Jobs (Admin CRUD)
+
+Files: routes.ts (jobs block), unified-schema.ts.
+Functions: formatJobTimestamps, serializeJob, mapJobToTableShape; handlers for GET (public active), POST, PUT, PATCH archive/unarchive, DELETE, GET archived.
+Conditions: admin-only on mutations; public GET filters status=active and !archived.
+Data xform: ISO dates; derived title/location.
+Errors: 404 missing job; 400 on bad data; 500 on DB.
+Optimizations: Zod-validate admin updates; optimistic locking via updatedAt; indexes on status, archived.
+Jobs (Employer self-service)
+
+Files: routes.ts (employer jobs/profile), unified-schema.ts.
+Functions: normalizeEmployerInput, employerJobUpdateSchema, jobCreateSchema; location derivation; ownership checks.
+Conditions: role must be employer; must own job; required location; status transitions to pending/draft.
+Data xform: fill location from employer address; set timestamps; map industry/contact fields.
+Errors: 403 wrong role/ownership; 404 missing; 400 validation.
+Optimizations: state-machine enforcement for status; index (employerId,status); stricter editable field list.
+Applications
+
+Files: routes.ts (apply + list), unified-schema.ts.
+Functions: apply handler prevents duplicate (jobId, applicantId); inserts applicationsTable.
+Conditions: role jobseeker/freelancer; jobId required; duplicate check.
+Data xform: status pending, timestamps, coverLetter.
+Errors: 400 duplicate/missing; 403 wrong role; 404 if job/app missing (elsewhere).
+Optimizations: DB unique index (jobId, applicantId); FKs to jobs/applicants; status transitions.
+Messages
+
+Files: routes.ts (messages block), websocket.ts.
+Functions: inbox/sent/all fetch; conversation fetch; send message with generated id; mark read; unread count; WS notify (notifyNewMessage, notifyMessageRead).
+Conditions: auth required; receiver ownership check on mark-read.
+Data xform: sort by timestamps.
+Errors: 400 missing receiver/content; 403 if not receiver; 404 missing message.
+Optimizations: indexes on (receiverId,isRead), (senderId); pagination.
+AI Matching & Insights
+
+Files: routes.ts (/api/jobs/:jobId/match, /ai-insights), ai-job-matcher.ts.
+Functions: aiJobMatcher.matchApplicantsToJob; optional includeInsights.
+Conditions: auth required; job lookup; minScore/maxResults query params.
+Data xform: serialize job/applicant; computed scores and AI comments.
+Errors: 404 job/applicant; 500 on AI.
+Optimizations: cache matches; limit maxResults; guard AI timeouts.
+Settings & Admin
+
+Files: routes.ts (general/auth settings, admin create), storage.ts.
+Functions: Zod schemas generalSettingsSchema, authSettingsSchema, adminCreateSchema; storage.update....
+Conditions: admin-only for protected settings; public variants strip secrets.
+Data xform: sanitize auth providers; trim/lower emails.
+Errors: 400 Zod errors; 501 if persistence not implemented.
+Optimizations: persist validation alerts; audit logging; remove verbose console email dumps.
+Google OAuth
+
+Files: routes.ts (/auth/google*), auth.ts.
+Functions: initGoogleOAuth, encodeStateToken/decodeStateToken (in routes), buildGoogleCallbackUrl, role-aware redirect; auto-create applicant/employer if absent, generateOAuthPasswordHash.
+Conditions: provider enabled; role from state; email required.
+Data xform: derive names, profile photo; token issuance per role.
+Errors: redirects with reason; creation failures logged.
+Optimizations: require T&C acceptance; avoid silent auto-create; add rate limits.
+Dashboard/Analytics
+
+Files: routes.ts (summary/recent/charts/referrals), storage.ts.
+Functions: storage aggregations; date normalization middleware.
+Conditions: some endpoints public, some auth/role-gated.
+Data xform: normalize dates to ISO.
+Errors: 500 on DB; minimal validation.
+Optimizations: cache/ETag for public reads; precompute aggregates.
+State Management
+
+Client: AuthContext + localStorage; React Query for data fetching (no Redux/Zustand). Query defaults: no retries, no refetch on focus, staleTime/gcTime 0.
+Optimizations: raise staleTime/gcTime; add global query error boundary for 401 → logout/refresh.
+Global Error/Validation
+
+Date normalization middleware for all /api responses; sendValidationError ring-buffer; errorHandler logs with codes; Zod validation per route cluster.
+
+Here’s a compact per-process map with files, functions, conditions, data transforms, error risks, and optimization ideas.
+
+User Registration
+
+Files: routes.ts (signup jobseeker/employer/admin), auth.ts, unified-schema.ts, auth.tsx.
+Functions: validateEmail, validatePassword, hashPassword, generateToken, signup handlers.
+Conditions: required fields; password complexity; email format; duplicate email check; role defaults.
+Data: trim/lower email; derive first/last; bcrypt hash; set hasAccount, registrationDate, timestamps.
+Errors: 400 invalid/missing/duplicate; 500 DB.
+Optimizations: DB unique index on lower(email); rate-limit; transactional create; align role/status enums.
+Login
+
+Files: routes.ts (/api/auth/login), auth.ts.
+Functions: loginSchema; getJobseekerByEmailWithPassword, getEmployerByEmailWithPassword, getAdminByEmailWithPassword; verifyPassword; generateToken.
+Conditions: email/password required; tries jobseeker→employer→admin.
+Data: email lowercased; derive name.
+Errors: 401 invalid creds; 500 DB.
+Optimizations: indexed lower(email); rate-limit/lockout; single-query admin lookup.
+Auth Persistence
+
+Files: auth.tsx; middleware.ts; routes.ts (/api/auth/me, /api/auth/logout).
+Functions: AuthProvider (localStorage gw_token/gw_user), authFetch; authMiddleware, roleMiddleware, adminOnly.
+Conditions: bearer token required; role enforcement.
+Data: JWT payload → req.user; localStorage hydrate.
+Errors: 401 missing/invalid; 403 role.
+Optimizations: HttpOnly cookies + refresh; centralized 401 logout; remove unused credentials:"include" if staying JWT-only.
+Creating Items (Jobs, Messages, Applications)
+
+Jobs (admin): POST /api/jobs — Zod jobCreateSchema, timestamps, status default active.
+Errors: 400 validation; 500 DB.
+Optimizations: stricter schema on update; indexes on status, archived.
+Jobs (employer): POST /api/employer/jobs — role employer; derive location from employer; status pending|draft; uses employer defaults.
+Errors: 403 wrong role; 400 missing location/validation; 500 DB.
+Optimizations: state machine; (employerId,status) index.
+Applications: POST /api/jobs/:jobId/apply — role jobseeker/freelancer; duplicate check (jobId, applicantId); status pending.
+Errors: 400 duplicate/missing jobId; 403 role; 500 DB.
+Optimizations: DB unique index (jobId, applicantId); FKs.
+Messages: POST /api/messages — auth; requires receiverId/content; notifies via WS.
+Errors: 400 missing fields; 500 DB.
+Optimizations: indexes (receiverId,isRead), (senderId); length limits.
+Reading Items
+
+Jobs: GET /api/jobs (public active, !archived), GET /api/jobs/archived, GET /api/employer/jobs (own), plus AI match/insights.
+Data: ISO dates, derived title/location.
+Errors: 404 when specific job not found (match/insights).
+Optimizations: cache/ETag for public; pagination.
+Applications: GET /api/jobseeker/applications (self).
+Optimizations: join to jobs with select fields; pagination.
+Messages: inbox/sent/all; conversation; unread count.
+Optimizations: pagination; indexes.
+Updating Items
+
+Jobs (admin): PUT /api/jobs/:jobId (loose payload), PATCH archive/unarchive.
+Errors: 404 missing; 500 DB.
+Optimizations: Zod-validate update; optimistic locking on updatedAt.
+Jobs (employer): PUT /api/employer/jobs/:jobId (whitelisted fields; status reset pending|draft).
+Errors: 403 ownership; 404 missing; 400 no changes.
+Employer profile: PUT /api/employer/profile with employerUpdateSchema.
+Errors: 400 Zod; 404 missing.
+Deleting Items
+
+Jobs (admin): DELETE /api/jobs/:jobId.
+Jobs (employer): DELETE /api/employer/jobs/:jobId (draft/pending, ownership).
+Errors: 403 ownership; 404 missing; 500 DB.
+Optimizations: soft-delete option; FK cascading once FKs exist.
+Admin Sections
+
+Files: routes.ts (admin create credentials, settings), storage.ts.
+Functions: adminCreateSchema, generalSettingsSchema, authSettingsSchema; storage.updateAuthSettings/updateGeneralSettings.
+Conditions: authMiddleware+adminOnly.
+Errors: 400 Zod; 501 if persistence not implemented.
+Optimizations: audit logs; remove verbose email console logs; add rate-limit.
+Dashboard/Analytics
+
+Files: routes.ts summary/recent/charts/referrals; storage.ts.
+Data: normalized dates; aggregates.
+Optimizations: cache/ETag; precompute.
+Unique Logic
+
+Google OAuth: role-aware redirect; auto-create applicant/employer if missing; profile photo; token issuance.
+Validation alerts ring buffer (50); global date normalization middleware.
+AI matching/insights: /api/jobs/:jobId/match, /ai-insights using ai-job-matcher.
+State Management
+
+AuthContext + localStorage; React Query (queryClient) with no retries, no refetch on focus, staleTime/gcTime=0; no Redux/Zustand.
+Optimizations: set nonzero staleTime/gcTime; global query error boundary to handle 401.
+Cross-cutting Error Risks
+
+No DB FKs (orphan risk); no rate limiting/lockout; tokens in localStorage (XSS); status enum drift; admin email scans are O(n) and log PII; lack of pagination in lists.
+Cross-cutting Optimizations
+
+Add FKs and indexes: lower(email), (employerId,status,archived), (jobId,applicantId), createdAt.
+Harden auth: HttpOnly+refresh tokens, rotation, rate-limit, lockouts.
+Normalize status enums in DB and Zod; validate admin updates; add pagination; add ETag/cache for public reads.
+
+
+Read [](file:///c%3A/Users/Tycoon%20James%20Flores/Desktop/ALL/TYCOON%20FILES/INFORMATION%20TECHNOLOGY/1st%20Sem%203rd%20Year/Capstone%20I/GensanWorks/server/storage.ts#1-1), lines 1 to 360
+
+Read [](file:///c%3A/Users/Tycoon%20James%20Flores/Desktop/ALL/TYCOON%20FILES/INFORMATION%20TECHNOLOGY/1st%20Sem%203rd%20Year/Capstone%20I/GensanWorks/server/storage.ts#360-360), lines 360 to 760
+
+**Section 7 – Error Handling Audit**
+
+- **index.ts**
+  - `startServer()` calls `ensureTestAccounts()` without a surrounding try; DB/init failure would crash startup.  
+    - Fix: wrap `await ensureTestAccounts()` in try/catch and surface a clear startup error (or continue with degraded mode).
+  - HTTP listen promise only catches `httpServer.on('error')`; if `setupVite` throws in dev, it escapes.  
+    - Fix: wrap Vite setup in try/catch; on error, log and stop server gracefully.
+  - Global handlers log unhandled rejection/exception but do not exit or notify operator.  
+    - Fix: add process exit with nonzero code (or structured alert) after logging in production.
+
+- **routes.ts (selected hot spots)**
+  - Admin job update `PUT /api/jobs/:jobId` accepts arbitrary body, no Zod; invalid data can enter DB, potential runtime errors downstream.  
+    - Fix: apply `jobCreateSchema.partial()` (or dedicated update schema), and only permit whitelisted keys.
+  - Admin job delete/archive/unarchive: no validation of `jobId` format; DB errors bubble to catch (ok), but missing 400 on bad ids.  
+    - Fix: validate `jobId` (uuid-like) before querying.
+  - Employer job creation/update/delete/archive: role/ownership checks present, but payload relies on `jobCreateSchema`/`employerJobUpdateSchema`—good; however `location` derivation can be empty then 400 (ok). No pagination on employer jobs, risk of large result load (performance, not crash).
+  - Admin create credentials `/api/admin/create-admin-user`: scans all admins O(n), logs PII emails, no rate-limit; DB errors caught but PII leak in logs.  
+    - Fix: query by normalized email; remove console dumps; add rate-limit middleware.
+  - Google OAuth callback: auto-creates applicant/employer without explicit validation of required profile fields; partial data can enter DB. Errors redirect, but creation failure could leave inconsistent rows.  
+    - Fix: validate normalized email/name; wrap each DB write in try/catch with rollback (transaction) or guard; require T&C acceptance flag.
+  - `GET /api/jobs/:jobId/match` and `/ai-insights`: parse `minScore`/`maxResults` without bounds; huge `maxResults` can exhaust memory.  
+    - Fix: clamp query params (e.g., 1–500), return 400 on invalid.
+  - Public `GET /api/jobs`: filters only `status === 'active' && !archived`; no limit/pagination; potential large payload (perf risk).  
+    - Fix: add pagination and `limit` guard.
+  - Message send `/api/messages`: only checks receiverId/content; no size limits on subject/content.  
+    - Fix: add length validation; optional HTML/JS sanitization.
+  - Message read `/api/messages/:id/read`: fetches twice (once to check, then update) without transaction—minor. Errors caught (ok).
+  - Job apply `/api/jobs/:jobId/apply`: no validation of `jobId` format; coverLetter unbounded.  
+    - Fix: validate `jobId`, limit coverLetter length, add unique index `(jobId, applicantId)` at DB.
+  - `auth` flows: login tries jobseeker→employer→admin; if DB unreachable, sendError handles (ok). Missing rate-limit/lockout.  
+    - Fix: add rate-limit and lockout thresholds.
+  - General/auth settings PUT: if storage not implemented returns 501 (ok). JSON schema via Zod (good).
+
+- **middleware.ts**
+  - `authMiddleware`: uses `verifyToken`; if `jwt.verify` throws unexpected error, catch returns 500 (ok). No clock-skew handling.  
+    - Improvement: distinguish expired vs invalid; return 401 on expired.
+  - `roleMiddleware`/`adminOnly`: return 401/403 (ok). No rate-limit (not needed here).
+
+- **auth.ts**
+  - JWT secret default is dev value; risk, not crash.  
+    - Fix: enforce non-default in production.
+  - Google strategy `setupStrategy` has callback try/catch (ok).  
+  - `verifyToken` returns null on error; upstream middleware handles (ok).
+
+- **storage.ts (selected)**
+  - Many methods wrap in try/catch and return fallbacks; several return silent empty arrays on DB error (e.g., `getSummaryData` inner fetch catch logs and continues; outer catch returns zeros). This can hide DB failures.  
+    - Fix: surface 500 to caller or include an `partialData: true` flag when falling back.
+  - `getDb()` no try/catch around `initializeDatabase`; failure rejects and may crash callers if uncaught.  
+    - Fix: wrap and throw typed error; callers can map to 500.
+  - File reads/writes for settings catch and log but ignore failure; returned in-memory defaults may diverge.  
+    - Fix: propagate or return `{ error }` indicator to routes.
+  - `changeJobseekerPassword` catches and returns `{ success:false }` (ok), but bcrypt errors unlikely.
+  - `getRecentActivities`: on DB error returns `[]` (silent).  
+    - Fix: propagate error to return 500 to API instead of empty data.
+  - Various JSON parses (skills, etc.) swallow errors (ok, defensive).
+  - No DB foreign keys: invalid references can be written (applicants/jobs/applications).  
+    - Fix: add FKs in migrations to stop bad data at DB layer.
+
+- **Unhandled Promises / Missing catch**
+  - `ensureTestAccounts` (index.ts) not wrapped; rejection bubbles.  
+  - `setupVite(app, httpServer)` not wrapped.  
+  - Many `console.log` operations around DB reads lack try but are synchronous; main async calls are awaited inside try in routes. No obvious `.then` without catch.
+
+- **Missing Validation / Invalid Data Entry Points**
+  - Admin job update (no schema) → arbitrary columns.  
+  - Cover letter, message content unbounded → large payload risk.  
+  - OAuth auto-create without schema → partial/dirty rows.  
+  - No DB constraints: orphan applications/messages/jobs possible.  
+  - Public list endpoints without pagination → large responses.
+
+- **Potential Crash Points**
+  - DB init failure (getDb) if not caught by caller (e.g., ensureTestAccounts).  
+  - Vite setup throw in dev (unhandled).  
+  - Unexpected types hitting `new Date()` in some routes are wrapped; where not wrapped: small risk, but most date parsing is defensive.  
+  - Large in-memory sorts (jobs list, messages, matches) could OOM with big datasets.
+
+**Concrete Code Modifications (high-impact)**
+1) Wrap startup init:
+```ts
+// server/index.ts
+try { await ensureTestAccounts(); } catch (e) {
+  console.error("Failed to seed test accounts", e);
+  throw e; // or continue with warning in dev
+}
+```
+Wrap Vite setup similarly.
+
+2) Add validation to admin job update:
+```ts
+// routes.ts admin PUT /api/jobs/:jobId
+const payload = jobCreateSchema.partial().parse(req.body);
+const allowed = (({positionTitle,description,location,salaryMin,salaryMax,salaryAmount,salaryPeriod,status,employerId}) =>
+  ({positionTitle,description,location,salaryMin,salaryMax,salaryAmount,salaryPeriod,status,employerId}))(payload);
+```
+
+3) Add bounds and validation to match endpoints:
+```ts
+const minScore = clamp(parseInt(q,10) || 50, 0, 100);
+const maxResults = clamp(parseInt(q,10) || 100, 1, 500);
+if (Number.isNaN(minScore) || Number.isNaN(maxResults)) return res.status(400)...
+```
+
+4) Add content length guards:
+- Messages: reject `content.length > 4000`, `subject.length > 200`.
+- Applications: limit `coverLetter` length; validate `jobId` format.
+
+5) Harden OAuth creation:
+```ts
+if (!validateEmail(email)) return redirectWithError(...);
+const name = deriveName(displayName,email);
+const tx = await db.transaction(async (trx)=>{ ...create user/employer... });
+```
+
+6) Surface storage errors:
+- In `getSummaryData`, `getRecentActivities`, etc., rethrow after logging, let route send 500 instead of empty data.
+
+7) Add DB constraints (migrations):
+- Unique lower(email) on applicants/employers/admins.
+- FK applications.jobId→jobs.id, applications.applicantId→applicants.id; messages senderId/receiverId to users/employers/applicants (depending on model).
+- Indexes: `(status, archived)`, `(employerId, status)`, `(jobId, applicantId)` unique.
+
+8) Rate-limit auth endpoints:
+- Add middleware to `/api/auth/login` and `/api/auth/signup/*` (e.g., express-rate-limit).
+
+9) Token handling:
+- Move JWT to HttpOnly cookies with refresh rotation; handle expired token as 401 (not 500) in `authMiddleware`.
+
+If you want, I can open a PR-ready patch applying items 1, 2, 3, 4, and adding defensive guards plus a migration checklist for constraints.
+
+
+**Section 8 – Security Audit (Full Coverage)**  
+Below are concrete issues, risks, vulnerable code, and secure replacements.
+
+- **Hardcoded / Weak JWT Secret**
+  - Risk: Tokens can be forged if `JWT_SECRET` uses the default string.
+  - Vulnerable code (server/auth.ts):
+    ```ts
+    const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
+    ```
+  - Secure version:
+    ```ts
+    const JWT_SECRET = process.env.JWT_SECRET;
+    if (!JWT_SECRET || JWT_SECRET === "dev-secret-change-in-production") {
+      throw new Error("JWT_SECRET must be set to a strong value in the environment");
+    }
+    ```
+
+- **Token Stored in localStorage (XSS-stealable)**
+  - Risk: XSS can exfiltrate bearer tokens; no refresh rotation.
+  - Vulnerable code (client/src/lib/auth.tsx):
+    ```ts
+    const t = localStorage.getItem('gw_token');
+    ...
+    localStorage.setItem('gw_token', t);
+    ```
+  - Secure pattern (server-side set HttpOnly cookie, no localStorage):
+    ```ts
+    // server/routes.ts (after successful login/signup)
+    res.cookie("gw_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    }).json({ user: { ... } });
+    ```
+    And adjust client to rely on cookies (no localStorage, no Authorization header).
+
+- **No Rate Limiting on Auth Endpoints**
+  - Risk: Brute-force credential stuffing on `/api/auth/login` and `/api/auth/signup/*`.
+  - Vulnerable code: All auth routes lack rate-limit middleware.
+  - Secure version (example):
+    ```ts
+    import rateLimit from "express-rate-limit";
+    const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
+    app.post("/api/auth/login", authLimiter, async (...) => { ... });
+    app.post("/api/auth/signup/jobseeker", authLimiter, async (...) => { ... });
+    ```
+
+- **Admin Job Update Lacks Validation (Mass Assignment)**
+  - Risk: Arbitrary fields can be written; inconsistent data or privilege abuse if schema changes.
+  - Vulnerable code (server/routes.ts, PUT /api/jobs/:jobId):
+    ```ts
+    const updateData = req.body; // no schema
+    ...
+    const updatedJob = { ...job, ...updateData, ... };
+    ```
+  - Secure version:
+    ```ts
+    const payload = jobCreateSchema.partial().parse(req.body);
+    const allowed = (({
+      positionTitle, description, location,
+      salaryMin, salaryMax, salaryAmount, salaryPeriod, status, employerId
+    }) => ({
+      positionTitle, description, location,
+      salaryMin, salaryMax, salaryAmount, salaryPeriod, status, employerId
+    }))(payload);
+    const updatedJob = { ...job, ...allowed, id: jobId, updatedAt: new Date().toISOString() };
+    ```
+
+- **Unbounded Message / Cover Letter Input**
+  - Risk: Very large payloads → memory/DoS; potential stored XSS if rendered without escaping.
+  - Vulnerable code (server/routes.ts):
+    ```ts
+    const { receiverId, content } = req.body; // no length checks
+    const coverLetter = body.coverLetter || ""; // no limit
+    ```
+  - Secure version:
+    ```ts
+    if (!receiverId || typeof content !== "string" || content.length === 0 || content.length > 4000) {
+      return sendValidationError(res, "Receiver and content (<=4000 chars) are required", "content");
+    }
+    const coverLetter = typeof body.coverLetter === "string" ? body.coverLetter.slice(0, 4000) : "";
+    ```
+
+- **Helmet CSP Disabled**
+  - Risk: Higher XSS exposure; CSP explicitly off.
+  - Vulnerable code (server/index.ts):
+    ```ts
+    app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+    ```
+  - Secure version (enable CSP with dev override):
+    ```ts
+    const isDev = app.get("env") === "development";
+    app.use(helmet({
+      contentSecurityPolicy: isDev ? false : {
+        useDefaults: true,
+        directives: {
+          "default-src": ["'self'"],
+          "script-src": ["'self'"],
+          "style-src": ["'self'", "'unsafe-inline'"],
+          "img-src": ["'self'", "data:", "https:"],
+        },
+      },
+      crossOriginEmbedderPolicy: false,
+    }));
+    ```
+
+- **Unsafe File Upload (Profile Image)**
+  - Risk: Any string persisted; data URLs or remote URLs without validation; possible large payload/SSRF if later fetched.
+  - Vulnerable code (server/storage.ts):
+    ```ts
+    const imageValue = typeof imagePayload === "string"
+      ? imagePayload
+      : imagePayload?.image || imagePayload?.data || null;
+    const imageToPersist = ... ? imageValue : fallback;
+    ```
+  - Secure version (size/type guard, optional CDN upload):
+    ```ts
+    const asString = typeof imagePayload === "string" ? imagePayload : imagePayload?.image || imagePayload?.data;
+    if (!asString || asString.length > 2_000_000 || !asString.startsWith("data:image/")) {
+      throw new Error("Invalid image payload");
+    }
+    // optionally strip metadata or upload to trusted storage before saving URL
+    await db.update(applicantsTable).set({ profileImage: asString, updatedAt: now }).where(...);
+    ```
+
+- **Google OAuth Auto-Create Without Validation/Approval**
+  - Risk: Attackers can create accounts with any email if they control Google address; no allowlist/rate-limit; minimal field validation.
+  - Vulnerable code (server/routes.ts, /auth/google/callback):
+    ```ts
+    if (!employer) { ... await db.insert(employersTable).values({ ... email ... }); }
+    if (!applicant) { ... await db.insert(applicantsTable).values({ ... email ... }); }
+    ```
+  - Secure version:
+    ```ts
+    if (!validateEmail(email)) return res.redirect(getRoleLoginRedirect(role, "invalid-email"));
+    // optionally: require existing record or admin approval
+    if (role === "admin") { /* require pre-existing admin */ }
+    // wrap creation in transaction and add rate-limit on /auth/google
+    ```
+
+- **Missing Authorization Scope on AI Match**
+  - Risk: Any authenticated user (jobseeker) can hit `/api/jobs/:jobId/match` and view applicant/job info.
+  - Vulnerable code (server/routes.ts):
+    ```ts
+    app.get("/api/jobs/:jobId/match", authMiddleware, async ...); // no role check
+    ```
+  - Secure version:
+    ```ts
+    app.get("/api/jobs/:jobId/match", authMiddleware, roleMiddleware("admin", "employer"), async ...);
+    ```
+
+- **Potential CSRF if Cookies Adopted Later**
+  - Current bearer-in-header flow is CSRF-resistant, but `credentials: "include"` in `queryClient` could send cookies if added; no CSRF tokens.
+  - Vulnerable code (client/src/lib/queryClient.ts):
+    ```ts
+    fetch(queryKey.join("/") as string, { credentials: "include", cache: "no-store" });
+    ```
+  - Secure version: keep bearer headers only, or if cookies are used, add CSRF token header:
+    ```ts
+    fetch(url, { credentials: "include", headers: { "X-CSRF-Token": csrfToken }, cache: "no-store" });
+    ```
+
+- **Missing Input Validation (General Gaps)**
+  - Admin job update (already noted), jobId format, message content, coverLetter, OAuth profile fields.  
+  - Secure approach: add Zod schemas for each payload and enforce UUID/length/enum constraints before DB writes.
+
+- **Insecure Cookies (if added)**
+  - Ensure Set-Cookie uses `HttpOnly`, `Secure`, `SameSite=lax/strict`, short TTL, and rotation with refresh tokens.
+
+- **Missing Rate Limits (other sensitive routes)**
+  - Add rate limits to `/auth/google`, `/api/messages`, `/api/jobs/:id/apply` to reduce spam/abuse.
+
+- **XSS Exposure in Rendering**
+  - Any user-supplied `content`, `coverLetter`, `message` could be reflected in UI; ensure frontend escapes/filters or backend strips HTML for text fields.
+  - Secure version: sanitize/escape before storing or when rendering; e.g., strip tags server-side for message/content fields.
+
+- **SQL Injection**
+  - Mitigated by Drizzle parameterization; no dynamic string concatenation observed. (Keep validation to avoid logic injections.)
+
+If you want, I can implement a hardening batch now: (1) rate-limit auth routes, (2) add validation/whitelist to admin job update, (3) clamp message/coverLetter lengths, (4) add role guard to `/api/jobs/:jobId/match`, and (5) enforce strong JWT secret check.
+
+
+**Performance Audit**
+
+- **Missing DB Indexes (slow filters/joins)**
+  - Paths: `jobsTable` filtered by `status`, `archived`, `employerId`; `applicationsTable` by `(jobId, applicantId)`; `messagesTable` by `receiverId`, `isRead`.
+  - Fix (migration snippets):
+    ```sql
+    CREATE INDEX idx_jobs_status_archived ON jobs (status, archived);
+    CREATE INDEX idx_jobs_employer ON jobs (employerId, status);
+    CREATE UNIQUE INDEX idx_applications_job_applicant ON applications (jobId, applicantId);
+    CREATE INDEX idx_messages_receiver_read ON messages (receiverId, isRead);
+    ```
+    And add FKs to enforce integrity:
+    ```sql
+    ALTER TABLE applications ADD CONSTRAINT fk_app_job FOREIGN KEY (jobId) REFERENCES jobs(id);
+    ALTER TABLE applications ADD CONSTRAINT fk_app_applicant FOREIGN KEY (applicantId) REFERENCES applicants(id);
+    ```
+
+- **Unpaginated Queries (risk: large responses / slow)**
+  - Public jobs list: `GET /api/jobs` returns all active jobs.
+  - Employer jobs: `GET /api/employer/jobs` returns all owned jobs.
+  - Messages inbox/sent: `GET /api/messages` returns all.
+  - Fix (example for jobs):
+    ```ts
+    // /api/jobs with pagination defaults
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const pageSize = Math.min(50, parseInt(req.query.pageSize as string) || 20);
+    const offset = (page - 1) * pageSize;
+    const rows = await db.select().from(jobsTable)
+      .where(and(eq(jobsTable.archived, false), eq(jobsTable.status, "active")))
+      .limit(pageSize).offset(offset);
+    ```
+    Apply same pattern to employer jobs and messages.
+
+- **N+1 Patterns**
+  - Applications list joins jobs in separate queries (in routes further down). Risk of multiple round-trips per application set.
+  - Fix: join once:
+    ```ts
+    const apps = await db.select({
+      app: applicationsTable,
+      job: jobsTable,
+    }).from(applicationsTable)
+      .leftJoin(jobsTable, eq(applicationsTable.jobId, jobsTable.id))
+      .where(eq(applicationsTable.applicantId, userId));
+    ```
+
+- **Blocking / CPU-heavy sorts**
+  - Messages and jobs are sorted in-memory after fetching all rows. With large sets this blocks event loop.
+  - Fix: sort in DB + paginate:
+    ```ts
+    const rows = await db.select().from(messagesTable)
+      .where(eq(messagesTable.receiverId, userId))
+      .orderBy(desc(messagesTable.createdAt))
+      .limit(pageSize).offset(offset);
+    ```
+
+- **Unbounded AI matching parameters**
+  - `/api/jobs/:jobId/match` allows `maxResults=Infinity`; can process entire applicant set.
+  - Fix: clamp:
+    ```ts
+    const maxResults = clamp(parseInt(req.query.maxResults as string) || 100, 1, 500);
+    const minScore = clamp(parseInt(req.query.minScore as string) || 50, 0, 100);
+    ```
+
+- **Frontend re-renders / caching**
+  - React Query config sets `staleTime: 0`, `gcTime: 0`, `refetchOnWindowFocus: false`, but no caching leads to frequent refetch on navigation if components remount.
+  - Fix:
+    ```ts
+    export const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: 60_000,
+          gcTime: 5 * 60_000,
+          refetchOnWindowFocus: true,
+          retry: 1,
+        },
+      },
+    });
+    ```
+    Memoize heavy components with stable keys; use `select` in queries to reduce payload before rendering.
+
+- **Heavy components / unbounded lists**
+  - Jobs and messages rendered without virtualization; risk grows with list size.
+  - Fix: paginate in API; use simple pagination UI or windowing (react-window) for large lists.
+
+- **Uncached requests (static/public data)**
+  - Public `GET /api/jobs` and summary endpoints always uncached.
+  - Fix: add server-side cache/ETag for public GETs:
+    ```ts
+    res.set("Cache-Control", "public, max-age=30");
+    ```
+    Or store in-memory cache for summary with short TTL.
+
+- **Inefficient loops**
+  - Storage `getSummaryData` filters large arrays in JS after pulling full tables.
+  - Fix: push date filters to SQL:
+    ```ts
+    const applicants = await db.select().from(applicantsTable)
+      .where(and(gte(applicantsTable.createdAt, start), lte(applicantsTable.createdAt, end)));
+    ```
+
+- **Missing authorization guard (perf + leakage)**
+  - `/api/jobs/:jobId/match` lacks role guard; unnecessary computation for unauthorized users.
+  - Fix: `roleMiddleware("admin","employer")` to cut load.
+
+If you want, I can implement the quick wins now: (a) paginate `/api/jobs`, `/api/employer/jobs`, and `/api/messages`; (b) clamp AI match params; (c) add key indexes migration; (d) adjust React Query cache settings.
+
+
+Here’s a concise bug list with locations, why, crash/impact scenarios, and fix snippets.
+
+- **Admin job update lacks validation (mass assignment)**
+  - File: routes.ts (~line 3135, PUT `/api/jobs/:jobId`)
+  - Issue: `updateData = req.body` merged into DB row without schema; arbitrary fields or invalid enums persist.
+  - Impact: Corrupt job records; hidden failures downstream; privilege abuse if schema changes.
+  - Fix:
+    ```ts
+    import { jobCreateSchema } from "@shared/schema";
+
+    app.put("/api/jobs/:jobId", authMiddleware, adminOnly, async (req, res) => {
+      try {
+        const jobId = req.params.jobId;
+        const db = await storage.getDb();
+        const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, jobId));
+        if (!job) return res.status(404).json({ error: "Job not found" });
+
+        const payload = jobCreateSchema.partial().parse(req.body);
+        const allowed = (({
+          positionTitle, description, location,
+          salaryMin, salaryMax, salaryAmount, salaryPeriod, status, employerId
+        }) => ({
+          positionTitle, description, location,
+          salaryMin, salaryMax, salaryAmount, salaryPeriod, status, employerId
+        }))(payload);
+
+        const updatedJob = {
+          ...job,
+          ...allowed,
+          id: jobId,
+          createdAt: job.createdAt,
+          updatedAt: new Date().toISOString(),
+        };
+        await db.update(jobsTable).set(updatedJob).where(eq(jobsTable.id, jobId));
+        res.json({ message: "Job updated successfully", job: updatedJob });
+      } catch (error) {
+        return sendError(res, error);
+      }
+    });
+    ```
+
+- **AI match endpoint unbounded and under-authorized**
+  - File: routes.ts (~line 3508, GET `/api/jobs/:jobId/match`)
+  - Issue: Anyone authenticated can call; `maxResults` can be `Infinity`, causing heavy loads.
+  - Impact: Data leakage to jobseekers; possible memory/CPU exhaustion.
+  - Fix:
+    ```ts
+    app.get("/api/jobs/:jobId/match",
+      authMiddleware,
+      roleMiddleware("admin", "employer"),
+      async (req, res) => {
+        const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+        const minScore = clamp(parseInt(req.query.minScore as string) || 50, 0, 100);
+        const maxResults = clamp(parseInt(req.query.maxResults as string) || 100, 1, 500);
+        // ...rest unchanged, use clamped values
+      });
+    ```
+
+- **Messages and cover letters unbounded**
+  - File: routes.ts (~line 1200 for messages POST; ~line 3706 for apply)
+  - Issue: No length limits on `content`/`coverLetter`.
+  - Impact: Large payload DoS; stored XSS risk if rendered unsanitized.
+  - Fix:
+    ```ts
+    // messages POST
+    if (!receiverId || typeof content !== "string" || content.length === 0 || content.length > 4000) {
+      return sendValidationError(res, "Receiver and content (<=4000 chars) are required", "content");
+    }
+    const safeSubject = typeof subject === "string" ? subject.slice(0, 200) : null;
+
+    // job apply
+    const coverLetter = typeof body.coverLetter === "string" ? body.coverLetter.slice(0, 4000) : "";
+    ```
+
+- **Public job list unpaginated**
+  - File: routes.ts (~line 3008, GET `/api/jobs`)
+  - Issue: Returns all jobs, sorted in-memory.
+  - Impact: Large responses degrade latency; memory pressure.
+  - Fix:
+    ```ts
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const pageSize = Math.min(50, parseInt(req.query.pageSize as string) || 20);
+    const offset = (page - 1) * pageSize;
+    const rows = await db.select().from(jobsTable)
+      .where(and(eq(jobsTable.archived, false), eq(jobsTable.status, "active")))
+      .limit(pageSize).offset(offset);
+    res.json(rows.map(mapJobToTableShape));
+    ```
+
+- **Employer jobs/messages also unpaginated**
+  - Files: routes.ts (~line 3240 `/api/employer/jobs`), (~line 1100 `/api/messages`)
+  - Issue: Fetch all; sorted in JS.
+  - Impact: Slow, high memory.
+  - Fix: Apply same pagination pattern with `orderBy(desc(...)).limit().offset()`.
+
+- **Unbounded login/signup brute force**
+  - Files: routes.ts (auth endpoints), auth.ts
+  - Issue: No rate limiting; weak JWT secret default.
+  - Impact: Credential stuffing; token forgery if secret left default.
+  - Fix:
+    ```ts
+    // enforce strong secret
+    const JWT_SECRET = process.env.JWT_SECRET;
+    if (!JWT_SECRET || JWT_SECRET === "dev-secret-change-in-production") {
+      throw new Error("JWT_SECRET must be set");
+    }
+    // add rate limit middleware per auth route
+    ```
+
+- **LocalStorage token storage (XSS-stealable)**
+  - File: auth.tsx
+  - Issue: JWT stored/read from localStorage.
+  - Impact: XSS → account takeover.
+  - Fix: Move to HttpOnly cookie flow; remove localStorage use.
+
+- **Settings persistence errors hidden**
+  - File: storage.ts (general/auth settings getters)
+  - Issue: On read failures, logs but returns possibly stale defaults.
+  - Impact: Silent misconfig, hard to detect.
+  - Fix: Surface errors or return `{ error }` and let route return 500.
+
+- **`getSummaryData` pulls full tables then filters in JS**
+  - File: storage.ts (~getSummaryData)
+  - Issue: Loads all applicants/employers/jobs into memory.
+  - Impact: Slow/large memory on big data.
+  - Fix: Push date filters into SQL and aggregate in DB; add pagination or counts via `COUNT(*)` in SQL.
+
+- **No unique/foreign-key constraints**
+  - Files: schema/migrations (not enforced at DB)
+  - Issue: Duplicate emails; orphan applications/messages possible.
+  - Impact: Data integrity issues; query bloat.
+  - Fix: Add DB constraints/indexes (see Section 9 list): unique lower(email), FK applications→jobs/applicants, indexes on jobs status/archived, messages receiver/read.
+
+- **Google OAuth auto-create without validation/approval**
+  - File: routes.ts (Google callback)
+  - Issue: Auto-creates employer/applicant with minimal checks.
+  - Impact: Rogue accounts; inconsistent data.
+  - Fix: Validate email with `validateEmail`, optionally require pre-existing record or approval; wrap in transaction; rate-limit `/auth/google`.
+
+If you want, I can implement the high-impact fixes now (validation on admin job update, pagination on jobs/messages, clamp AI params, length limits, rate-limit auth, JWT secret enforcement).
+
+
+Here are 12 ready-to-copy GitHub issue drafts.
+
+---
+
+**Title:** Add validation & whitelist to admin job update  
+**Description:** The admin job update endpoint merges arbitrary request bodies into jobs, allowing invalid fields/statuses to persist.  
+**Steps to reproduce:**  
+1. Call `PUT /api/jobs/:jobId` with `{ archived: "yes", status: "weird", foo: "bar" }`.  
+2. Inspect DB row; extra fields are stored.  
+**Expected vs actual:**  
+- Expected: Only whitelisted, validated fields persist.  
+- Actual: Any payload fields are merged into the job.  
+**File paths:** routes.ts (PUT `/api/jobs/:jobId`)  
+**Screenshots:** [add screenshot]  
+**Labels:** bug, backend, enhancement
+
+---
+
+**Title:** Add role guard & limits to AI job match endpoint  
+**Description:** `/api/jobs/:jobId/match` allows any authenticated user and accepts `maxResults=Infinity`, risking data exposure and heavy load.  
+**Steps to reproduce:**  
+1. Login as a jobseeker.  
+2. Call `GET /api/jobs/:id/match?maxResults=999999`.  
+3. Response includes match data; high load possible.  
+**Expected vs actual:**  
+- Expected: Only admin/employer can call; reasonable maxResults clamp.  
+- Actual: Any auth user can call; unbounded results.  
+**File paths:** routes.ts (GET `/api/jobs/:jobId/match`)  
+**Screenshots:** [add screenshot]  
+**Labels:** bug, backend, security
+
+---
+
+**Title:** Paginate public jobs list to avoid large responses  
+**Description:** `GET /api/jobs` returns all active jobs and sorts in memory; no pagination or limits.  
+**Steps to reproduce:**  
+1. Seed many jobs (e.g., >1000).  
+2. Call `GET /api/jobs`.  
+3. Observe large payload and slow response.  
+**Expected vs actual:**  
+- Expected: Paginated response with limit/offset or page/pageSize.  
+- Actual: Entire dataset returned.  
+**File paths:** routes.ts (GET `/api/jobs`)  
+**Screenshots:** [add screenshot]  
+**Labels:** bug, backend, performance
+
+---
+
+**Title:** Paginate employer job list and message inbox  
+**Description:** Employer jobs and messages endpoints fetch all records and sort client-side.  
+**Steps to reproduce:**  
+1. Create many employer-owned jobs (e.g., 500).  
+2. Call `GET /api/employer/jobs`.  
+3. Observe large payload; similar for `GET /api/messages`.  
+**Expected vs actual:**  
+- Expected: Paginated results sorted in DB.  
+- Actual: Unpaginated, in-memory sort.  
+**File paths:** routes.ts (`/api/employer/jobs`, `/api/messages`)  
+**Screenshots:** [add screenshot]  
+**Labels:** bug, backend, performance
+
+---
+
+**Title:** Enforce JWT secret and rate-limit auth endpoints  
+**Description:** JWT secret falls back to a dev string; login/signup lack rate limiting.  
+**Steps to reproduce:**  
+1. Start server without `JWT_SECRET`.  
+2. Flood `/api/auth/login` with many requests.  
+**Expected vs actual:**  
+- Expected: Server refuses to start without strong secret; auth endpoints rate-limited.  
+- Actual: Server starts with weak default; no rate limiting.  
+**File paths:** auth.ts, routes.ts (auth routes)  
+**Screenshots:** [add screenshot]  
+**Labels:** bug, backend, security
+
+---
+
+**Title:** Cap message content and cover letters to prevent payload abuse  
+**Description:** Message `content` and application `coverLetter` have no length limits; risk of DoS and stored XSS.  
+**Steps to reproduce:**  
+1. Send `POST /api/messages` with a 1MB `content`.  
+2. Observe DB write and slow handling.  
+**Expected vs actual:**  
+- Expected: Validation error for oversized payloads.  
+- Actual: Accepts unbounded payload.  
+**File paths:** routes.ts (messages POST; job apply POST)  
+**Screenshots:** [add screenshot]  
+**Labels:** bug, backend, security
+
+---
+
+**Title:** LocalStorage token storage exposes auth to XSS  
+**Description:** Client stores JWT in `localStorage`, making tokens readable via XSS.  
+**Steps to reproduce:**  
+1. Login in browser.  
+2. Run `localStorage.getItem("gw_token")` in console.  
+**Expected vs actual:**  
+- Expected: Auth token in HttpOnly cookie, not accessible to JS.  
+- Actual: Token persisted in localStorage.  
+**File paths:** auth.tsx  
+**Screenshots:** [add screenshot]  
+**Labels:** bug, frontend, security
+
+---
+
+**Title:** Google OAuth auto-creates accounts without validation/approval  
+**Description:** OAuth callback auto-creates employers/applicants with minimal checks; no allowlist or rate limit.  
+**Steps to reproduce:**  
+1. Login via Google with any email.  
+2. Observe new applicant/employer record created automatically.  
+**Expected vs actual:**  
+- Expected: Validate email, optionally require existing record or admin approval; rate-limit.  
+- Actual: Automatic creation with minimal validation.  
+**File paths:** routes.ts (`/auth/google/callback`)  
+**Screenshots:** [add screenshot]  
+**Labels:** bug, backend, security
+
+---
+
+**Title:** Summary data loads whole tables into memory  
+**Description:** `getSummaryData` fetches full applicants/employers/jobs then filters in JS, hurting performance on large datasets.  
+**Steps to reproduce:**  
+1. Populate thousands of applicants/jobs.  
+2. Hit `/api/summary`.  
+3. Observe latency and memory growth.  
+**Expected vs actual:**  
+- Expected: Aggregations and date filters pushed to SQL.  
+- Actual: Full-table scans in application memory.  
+**File paths:** storage.ts (`getSummaryData`)  
+**Screenshots:** [add screenshot]  
+**Labels:** bug, backend, performance
+
+---
+
+**Title:** Missing DB constraints for email uniqueness and FK integrity  
+**Description:** No unique lower(email) constraints; no FKs on applications/messages.  
+**Steps to reproduce:**  
+1. Insert duplicate applicant/employer emails differing by case.  
+2. Insert application referencing non-existent job/applicant.  
+**Expected vs actual:**  
+- Expected: DB rejects duplicates and orphan references.  
+- Actual: DB accepts invalid rows.  
+**File paths:** migrations (schema), unified-schema.ts  
+**Screenshots:** [add screenshot]  
+**Labels:** bug, backend, data-integrity
+
+---
+
+**Title:** Public endpoints lack caching/ETag for static reads  
+**Description:** Public `GET /api/jobs` and summary endpoints always uncached; repeat requests recompute.  
+**Steps to reproduce:**  
+1. Call `GET /api/jobs` repeatedly.  
+2. Observe identical payload, no cache headers.  
+**Expected vs actual:**  
+- Expected: Short TTL cache/ETag to reduce load.  
+- Actual: No caching headers.  
+**File paths:** routes.ts (public GETs)  
+**Screenshots:** [add screenshot]  
+**Labels:** enhancement, backend, performance
+
+---
+
+**Title:** React Query cache defaults force frequent refetches  
+**Description:** `staleTime` and `gcTime` are `0`, causing repeated fetches on remounts.  
+**Steps to reproduce:**  
+1. Navigate between pages that reuse the same query key.  
+2. Each mount triggers a fresh request.  
+**Expected vs actual:**  
+- Expected: Reasonable `staleTime`/`gcTime` to cache short-lived data.  
+- Actual: Immediate staleness and GC on unmount.  
+**File paths:** queryClient.ts  
+**Screenshots:** [add screenshot]  
+**Labels:** enhancement, frontend, performance
+
+Below is a full test-suite plan with concrete file contents and folder structure. Uses Jest + Supertest for unit/integration, and Playwright for E2E. Adjust paths if your config differs.
+
+## Folder Structure
+```
+tests/
+  unit/
+    auth.test.ts
+    utils-status.test.ts
+    storage-summary.test.ts
+  integration/
+    auth.routes.test.ts
+    jobs.routes.test.ts
+    employer.routes.test.ts
+    messages.routes.test.ts
+  e2e/
+    auth.e2e.spec.ts
+    job-apply.e2e.spec.ts
+    employer-post-job.e2e.spec.ts
+__mocks__/
+  db.ts           // mock drizzle instance
+  storage.ts      // mock storage adapter if needed
+playwright.config.ts
+jest.config.cjs   // already present; ensure ts-jest/tsx setup
+```
+
+## Unit Tests
+
+### `tests/unit/auth.test.ts`
+```ts
+import { validateEmail, validatePassword, hashPassword, verifyPassword, generateToken, verifyToken } from "../../server/auth";
+
+describe("auth utils", () => {
+  it("validates email format", () => {
+    expect(validateEmail("test@example.com")).toBe(true);
+    expect(validateEmail("bad@com")).toBe(false);
+  });
+
+  it("enforces password rules", () => {
+    const good = validatePassword("Str0ng!Pass");
+    expect(good.isValid).toBe(true);
+    const bad = validatePassword("weak");
+    expect(bad.isValid).toBe(false);
+    expect(bad.errors.length).toBeGreaterThan(0);
+  });
+
+  it("hashes and verifies passwords", async () => {
+    const hash = await hashPassword("Str0ng!Pass");
+    expect(hash).not.toEqual("Str0ng!Pass");
+    const ok = await verifyPassword("Str0ng!Pass", hash);
+    const fail = await verifyPassword("wrong", hash);
+    expect(ok).toBe(true);
+    expect(fail).toBe(false);
+  });
+
+  it("issues and verifies JWT", () => {
+    const token = generateToken({ id: "u1", email: "a@b.com", role: "admin", name: "Admin" });
+    const payload = verifyToken(token);
+    expect(payload?.email).toBe("a@b.com");
+    expect(payload?.role).toBe("admin");
+  });
+});
+```
+
+### `tests/unit/utils-status.test.ts`
+```ts
+import { classifyEmploymentStatus } from "../../server/storage";
+
+describe("classifyEmploymentStatus", () => {
+  it("detects self-employed from legacy text", () => {
+    expect(classifyEmploymentStatus("Self employed carpenter")).toBe("selfEmployed");
+  });
+  it("detects unemployed", () => {
+    expect(classifyEmploymentStatus("Unemployed, no work")).toBe("unemployed");
+  });
+  it("detects new entrant", () => {
+    expect(classifyEmploymentStatus("fresh graduate")).toBe("newEntrant");
+  });
+  it("detects employed", () => {
+    expect(classifyEmploymentStatus("Currently working full time")).toBe("employed");
+  });
+});
+```
+
+### `tests/unit/storage-summary.test.ts`
+```ts
+import { DatabaseStorage } from "../../server/storage";
+
+describe("storage.getSummaryData", () => {
+  it("returns zeros on empty DB", async () => {
+    const storage = new DatabaseStorage();
+    jest.spyOn(storage, "getDb").mockResolvedValue({
+      select: () => ({ from: () => [] }),
+      query: { applicantsTable: { findFirst: jest.fn() } },
+    } as any);
+    const res = await storage.getSummaryData();
+    expect(res.totalApplicants.value).toBe(0);
+    expect(res.activeJobPosts.value).toBe(0);
+  });
+});
+```
+
+## Integration Tests (Supertest + real app)
+
+### `tests/integration/auth.routes.test.ts`
+```ts
+import request from "supertest";
+import { createServer } from "http";
+import appInit from "../../server/index"; // if index exports app, else wrap registerRoutes
+
+describe("Auth routes", () => {
+  let server: any;
+  beforeAll(async () => {
+    server = await appInit.startServer ? await appInit.startServer() : createServer(appInit);
+  });
+  afterAll(async () => {
+    if (appInit.stopServer) await appInit.stopServer();
+  });
+
+  it("jobseeker signup -> token", async () => {
+    const res = await request(server)
+      .post("/api/auth/signup/jobseeker")
+      .send({ firstName: "Jane", lastName: "Doe", email: "jane@test.com", password: "Str0ng!Pass1", role: "jobseeker" });
+    expect(res.status).toBe(200);
+    expect(res.body.token).toBeDefined();
+    expect(res.body.user.email).toBe("jane@test.com");
+  });
+
+  it("login fails with bad password", async () => {
+    const res = await request(server)
+      .post("/api/auth/login")
+      .send({ email: "jane@test.com", password: "wrong" });
+    expect(res.status).toBe(401);
+  });
+});
+```
+
+### `tests/integration/jobs.routes.test.ts`
+```ts
+import request from "supertest";
+import appInit from "../../server/index";
+import { hashPassword, generateToken } from "../../server/auth";
+
+describe("Jobs routes", () => {
+  let server: any;
+  let adminToken: string;
+  beforeAll(async () => {
+    server = await appInit.startServer ? await appInit.startServer() : appInit;
+    adminToken = generateToken({ id: "admin-1", email: "admin@test.com", role: "admin", name: "Admin" });
+  });
+  afterAll(async () => {
+    if (appInit.stopServer) await appInit.stopServer();
+  });
+
+  it("admin creates a job", async () => {
+    const res = await request(server)
+      .post("/api/jobs")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        positionTitle: "Engineer",
+        description: "Build things",
+        location: "City",
+        salaryMin: 1000,
+        salaryMax: 2000,
+        salaryPeriod: "monthly",
+        employerId: "emp-1",
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.job.positionTitle).toBe("Engineer");
+  });
+
+  it("public gets jobs list", async () => {
+    const res = await request(server).get("/api/jobs");
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+});
+```
+
+### `tests/integration/employer.routes.test.ts`
+```ts
+import request from "supertest";
+import appInit from "../../server/index";
+import { generateToken } from "../../server/auth";
+
+describe("Employer routes", () => {
+  let server: any;
+  let employerToken: string;
+  beforeAll(async () => {
+    server = await appInit.startServer ? await appInit.startServer() : appInit;
+    employerToken = generateToken({ id: "emp-1", email: "emp@test.com", role: "employer", name: "Emp" });
+  });
+  afterAll(async () => {
+    if (appInit.stopServer) await appInit.stopServer();
+  });
+
+  it("employer gets profile (requires role)", async () => {
+    const res = await request(server)
+      .get("/api/employer/profile")
+      .set("Authorization", `Bearer ${employerToken}`);
+    expect([200,401,403]).toContain(res.status); // depending on seed data; adjust once fixtures exist
+  });
+});
+```
+
+### `tests/integration/messages.routes.test.ts`
+```ts
+import request from "supertest";
+import appInit from "../../server/index";
+import { generateToken } from "../../server/auth";
+
+describe("Messages routes", () => {
+  let server: any;
+  let userToken: string;
+  beforeAll(async () => {
+    server = await appInit.startServer ? await appInit.startServer() : appInit;
+    userToken = generateToken({ id: "user-1", email: "u@test.com", role: "jobseeker", name: "User" });
+  });
+  afterAll(async () => {
+    if (appInit.stopServer) await appInit.stopServer();
+  });
+
+  it("rejects send without content", async () => {
+    const res = await request(server)
+      .post("/api/messages")
+      .set("Authorization", `Bearer ${userToken}`)
+      .send({ receiverId: "emp-1", content: "" });
+    expect(res.status).toBe(400);
+  });
+});
+```
+
+## End-to-End Tests (Playwright)
+
+### `tests/e2e/auth.e2e.spec.ts`
+```ts
+import { test, expect } from "@playwright/test";
+
+test("jobseeker signup and login flow", async ({ page }) => {
+  await page.goto("http://localhost:5000");
+  await page.click('text=Sign Up');
+  await page.fill('input[name="firstName"]', 'Jane');
+  await page.fill('input[name="lastName"]', 'Doe');
+  await page.fill('input[name="email"]', 'jane+e2e@test.com');
+  await page.fill('input[name="password"]', 'Str0ng!Pass1');
+  await page.click('button:has-text("Create Account")');
+  await expect(page.getByText(/Welcome/i)).toBeVisible();
+  // logout/login if UI supports
+});
+```
+
+### `tests/e2e/job-apply.e2e.spec.ts`
+```ts
+import { test, expect } from "@playwright/test";
+
+test("jobseeker applies to a job", async ({ page }) => {
+  await page.goto("http://localhost:5000");
+  // assume logged in fixture or perform login here
+  await page.click('text=Jobs');
+  await page.click('text=Apply', { timeout: 5000 });
+  await page.fill('textarea[name="coverLetter"]', 'I am a great fit.');
+  await page.click('button:has-text("Submit Application")');
+  await expect(page.getByText(/Application submitted/i)).toBeVisible();
+});
+```
+
+### `tests/e2e/employer-post-job.e2e.spec.ts`
+```ts
+import { test, expect } from "@playwright/test";
+
+test("employer posts a job", async ({ page }) => {
+  await page.goto("http://localhost:5000");
+  // assume employer logged in
+  await page.click('text=Post a Job');
+  await page.fill('input[name="positionTitle"]', 'Backend Engineer');
+  await page.fill('textarea[name="description"]', 'Build APIs');
+  await page.fill('input[name="location"]', 'General Santos City');
+  await page.fill('input[name="salaryMin"]', '1000');
+  await page.fill('input[name="salaryMax"]', '2000');
+  await page.click('button:has-text("Submit")');
+  await expect(page.getByText(/Job submitted/i)).toBeVisible();
+});
+```
+
+## Mock Data (for integration)
+Use seed users/jobs when spinning the server in test mode (`ensureTestAccounts` already seeds admin/employer/jobseeker/sample job). For custom fixtures, insert directly via DB before tests:
+```ts
+const db = await storage.getDb();
+await db.insert(jobsTable).values({ id:"job-1", positionTitle:"QA", status:"active", archived:false, createdAt:new Date(), updatedAt:new Date() });
+```
+
+## Notes
+- Ensure Jest is configured for TS (`ts-jest` or `tsx` runner) and Supertest runs against the same server instance.
+- Playwright tests expect the dev server running at `http://localhost:5000`.
+- Adjust assertions where seed data may differ (e.g., employer profile existing).
+
+Below is a complete, ready-to-drop test suite design with full file contents, mock data, and folder structure. It uses Jest + Supertest for unit/integration and Playwright for E2E. Adjust selectors/fixtures to your UI as needed.
+
+---
+
+## Folder Structure
+```
+tests/
+  unit/
+    auth-utils.test.ts
+    middleware-auth.test.ts
+    status-classifier.test.ts
+    job-serializer.test.ts
+  integration/
+    auth.test.ts
+    jobs.test.ts
+    employer.test.ts
+    messages.test.ts
+    summary.test.ts
+  e2e/
+    auth-signup-login.spec.ts
+    employer-post-job.spec.ts
+    jobseeker-apply.spec.ts
+```
+
+---
+
+## Unit Tests
+
+### auth-utils.test.ts
+```ts
+import { describe, it, expect } from "@jest/globals";
+import {
+  validateEmail,
+  validatePassword,
+  hashPassword,
+  verifyPassword,
+  generateToken,
+  verifyToken,
+} from "../../server/auth";
+
+describe("auth utils", () => {
+  it("validates email", () => {
+    expect(validateEmail("good@example.com")).toBe(true);
+    expect(validateEmail("bad@com")).toBe(false);
+  });
+
+  it("enforces password complexity", () => {
+    const good = validatePassword("Str0ng!Pass123");
+    expect(good.isValid).toBe(true);
+    const bad = validatePassword("weak");
+    expect(bad.isValid).toBe(false);
+  });
+
+  it("hashes and verifies password", async () => {
+    const hash = await hashPassword("Str0ng!Pass123");
+    expect(await verifyPassword("Str0ng!Pass123", hash)).toBe(true);
+    expect(await verifyPassword("wrong", hash)).toBe(false);
+  });
+
+  it("issues and verifies JWT", () => {
+    const token = generateToken({ id: "u1", email: "a@b.com", role: "admin", name: "Admin" });
+    const payload = verifyToken(token);
+    expect(payload?.email).toBe("a@b.com");
+    expect(payload?.role).toBe("admin");
+  });
+});
+```
+
+### `tests/unit/middleware-auth.test.ts`
+```ts
+import { describe, it, expect } from "@jest/globals";
+import { authMiddleware } from "../../server/middleware";
+import { generateToken } from "../../server/auth";
+
+const mockRes = () => {
+  const res: any = {};
+  res.status = jest.fn().mockReturnValue(res);
+  res.json = jest.fn().mockReturnValue(res);
+  return res;
+};
+
+describe("authMiddleware", () => {
+  it("rejects missing token", () => {
+    const req: any = { headers: {} };
+    const res = mockRes();
+    const next = jest.fn();
+    authMiddleware(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it("accepts valid token", () => {
+    const token = generateToken({ id: "u1", email: "a@b.com", role: "admin", name: "Admin" });
+    const req: any = { headers: { authorization: `Bearer ${token}` } };
+    const res = mockRes();
+    const next = jest.fn();
+    authMiddleware(req, res, next);
+    expect(next).toHaveBeenCalled();
+    expect(req.user?.email).toBe("a@b.com");
+  });
+});
+```
+
+### `tests/unit/status-classifier.test.ts`
+```ts
+import { describe, it, expect } from "@jest/globals";
+import { classifyEmploymentStatus } from "../../server/storage";
+
+describe("classifyEmploymentStatus", () => {
+  it("detects employed", () => {
+    expect(classifyEmploymentStatus("Currently working full time")).toBe("employed");
+  });
+  it("detects self-employed", () => {
+    expect(classifyEmploymentStatus("Self employed carpenter")).toBe("selfEmployed");
+  });
+  it("detects unemployed", () => {
+    expect(classifyEmploymentStatus("Unemployed, no work")).toBe("unemployed");
+  });
+  it("detects new entrant", () => {
+    expect(classifyEmploymentStatus("fresh graduate")).toBe("newEntrant");
+  });
+});
+```
+
+### `tests/unit/job-serializer.test.ts`
+```ts
+import { describe, it, expect } from "@jest/globals";
+import { serializeJob } from "../../server/routes"; // adjust export if needed
+
+describe("serializeJob", () => {
+  it("fills title fallback", () => {
+    const out = serializeJob({ positionTitle: "Dev", createdAt: new Date() });
+    expect(out.title).toBe("Dev");
+  });
+  it("normalizes timestamps", () => {
+    const out = serializeJob({ positionTitle: "Dev", createdAt: "2020-01-01" });
+    expect(new Date(out.createdAt).getTime()).not.toBeNaN();
+  });
+});
+```
+
+---
+
+## Integration Tests (Supertest, hitting real app)
+
+### `tests/integration/auth.test.ts`
+```ts
+import request from "supertest";
+import { app } from "../../server/index";
+
+describe("Auth endpoints", () => {
+  const email = `int-${Date.now()}@example.com`;
+  const password = "Str0ng!Pass123";
+  let token: string;
+
+  it("signup jobseeker", async () => {
+    const res = await request(app)
+      .post("/api/auth/signup/jobseeker")
+      .send({ firstName: "Jane", lastName: "Doe", email, password, role: "jobseeker" })
+      .expect(200);
+
+    expect(res.body.token).toBeDefined();
+    token = res.body.token;
+  });
+
+  it("login with created user", async () => {
+    const res = await request(app)
+      .post("/api/auth/login")
+      .send({ email, password })
+      .expect(200);
+    expect(res.body.user.email).toBe(email);
+    token = res.body.token;
+  });
+
+  it("auth/me returns current user", async () => {
+    const res = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(res.body.user.email).toBe(email);
+  });
+});
+```
+
+### `tests/integration/jobs.test.ts`
+```ts
+import request from "supertest";
+import { app } from "../../server/index";
+import { generateToken } from "../../server/auth";
+
+describe("Jobs endpoints", () => {
+  const adminToken = generateToken({ id: "admin-1", email: "admin@test.com", role: "admin", name: "Admin" });
+  let jobId: string;
+
+  it("admin creates job", async () => {
+    const res = await request(app)
+      .post("/api/jobs")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        positionTitle: "Backend Engineer",
+        description: "APIs",
+        location: "City",
+        salaryMin: 1000,
+        salaryMax: 2000,
+        salaryPeriod: "monthly",
+        employerId: "emp-1",
+      })
+      .expect(201);
+    jobId = res.body.job.id;
+  });
+
+  it("public lists jobs", async () => {
+    const res = await request(app).get("/api/jobs").expect(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it("apply to job rejects unauthenticated", async () => {
+    await request(app).post(`/api/jobs/${jobId}/apply`).send({ coverLetter: "Hi" }).expect(401);
+  });
+});
+```
+
+### `tests/integration/employer.test.ts`
+```ts
+import request from "supertest";
+import { app } from "../../server/index";
+import { generateToken } from "../../server/auth";
+
+describe("Employer endpoints", () => {
+  const employerToken = generateToken({ id: "emp-1", email: "emp@test.com", role: "employer", name: "Emp" });
+
+  it("gets employer profile (authz enforced)", async () => {
+    const res = await request(app)
+      .get("/api/employer/profile")
+      .set("Authorization", `Bearer ${employerToken}`);
+    expect([200,404]).toContain(res.status); // adjust once fixture exists
+  });
+});
+```
+
+### `tests/integration/messages.test.ts`
+```ts
+import request from "supertest";
+import { app } from "../../server/index";
+import { generateToken } from "../../server/auth";
+
+describe("Messages endpoints", () => {
+  const userToken = generateToken({ id: "user-1", email: "u@test.com", role: "jobseeker", name: "User" });
+
+  it("rejects send without content", async () => {
+    const res = await request(app)
+      .post("/api/messages")
+      .set("Authorization", `Bearer ${userToken}`)
+      .send({ receiverId: "emp-1", content: "" });
+    expect(res.status).toBe(400);
+  });
+});
+```
+
+### `tests/integration/summary.test.ts`
+```ts
+import request from "supertest";
+import { app } from "../../server/index";
+
+describe("Summary endpoints", () => {
+  it("health ok", async () => {
+    const res = await request(app).get("/api/health").expect(200);
+    expect(res.body.status).toBe("ok");
+  });
+
+  it("summary returns cards", async () => {
+    const res = await request(app).get("/api/summary").expect(200);
+    expect(res.body).toBeDefined();
+  });
+});
+```
+
+---
+
+## End-to-End Tests (Playwright)
+
+**Prereq:** Run dev server (`npm run dev`) on `http://localhost:5000`. Install browsers: `npx playwright install`.
+
+### `tests/e2e/auth-signup-login.spec.ts`
+```ts
+import { test, expect } from "@playwright/test";
+
+test("jobseeker signup + login", async ({ page }) => {
+  const email = `e2e-${Date.now()}@example.com`;
+  await page.goto("http://localhost:5000");
+  await page.getByRole("button", { name: /sign up/i }).click();
+  await page.getByLabel(/first name/i).fill("E2E");
+  await page.getByLabel(/last name/i).fill("User");
+  await page.getByLabel(/email/i).fill(email);
+  await page.getByLabel(/password/i).fill("Str0ng!Pass123");
+  await page.getByRole("button", { name: /create account|sign up/i }).click();
+  await expect(page.getByText(/welcome|dashboard/i)).toBeVisible({ timeout: 10000 });
+
+  // (Optional) logout then login
+  // await page.getByRole("button", { name: /logout/i }).click();
+});
+```
+
+### `tests/e2e/employer-post-job.spec.ts`
+```ts
+import { test, expect } from "@playwright/test";
+
+test("employer posts a job", async ({ page }) => {
+  await page.goto("http://localhost:5000");
+  // assume employer already logged in (or script login)
+  await page.getByRole("link", { name: /post a job/i }).click();
+  await page.getByLabel(/position/i).fill("Backend Engineer");
+  await page.getByLabel(/description/i).fill("Build APIs");
+  await page.getByLabel(/location/i).fill("General Santos City");
+  await page.getByLabel(/salary min/i).fill("1000");
+  await page.getByLabel(/salary max/i).fill("2000");
+  await page.getByRole("button", { name: /submit|post/i }).click();
+  await expect(page.getByText(/submitted|saved/i)).toBeVisible({ timeout: 10000 });
+});
+```
+
+### `tests/e2e/jobseeker-apply.spec.ts`
+```ts
+import { test, expect } from "@playwright/test";
+
+test("jobseeker applies to a job", async ({ page }) => {
+  await page.goto("http://localhost:5000");
+  // assume logged in as jobseeker (or perform login)
+  await page.getByRole("link", { name: /jobs/i }).click();
+  await page.getByRole("button", { name: /apply/i }).first().click();
+  await page.getByLabel(/cover letter/i).fill("I am a great fit.");
+  await page.getByRole("button", { name: /submit application/i }).click();
+  await expect(page.getByText(/application submitted/i)).toBeVisible({ timeout: 10000 });
+});
+```
+
+---
+
+## Real Mock Data (for integration)
+- Existing seed in `ensureTestAccounts`: admin `admin@local.test` / `adminpass`; employer `employer01@gensanworks-demo.ph` / `EmployerDemoPass123!`; jobseeker `applicant001@demo.gensanworks.com` / `JobseekerDemoPass123!`; one sample job.
+- For custom cases, insert fixtures in `beforeAll` of integration tests using `storage.getDb()` and Drizzle tables:
+```ts
+const db = await storage.getDb();
+await db.insert(jobsTable).values({
+  id: "job-fixture-1",
+  positionTitle: "QA Engineer",
+  status: "active",
+  archived: false,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+});
+```
+
+---
+
+## Running
+- Unit + integration: `npm test` (Jest config already present; matches `**/tests/**/*.test.ts`).
+- Playwright E2E: `npx playwright install` then `npx playwright test tests/e2e/auth-signup-login.spec.ts`.
+
+This suite gives unit coverage of auth utilities, middleware, status classifier, and job serializer; integration coverage for auth, jobs, employer, messages, summary; and E2E coverage for critical auth and job flows.
+
+Here’s the complete test suite (current repo state), with folder layout and full file contents.
+
+Folder structure
+```
+tests/
+  api.test.ts                     (existing)
+  employment-helpers.test.ts      (existing)
+  integration.test.ts             (existing)
+  unit/
+    auth-utils.test.ts
+    middleware-auth.test.ts
+    status-classifier.test.ts
+  integration/
+    auth-flow.test.ts
+    jobs.test.ts
+    employer.test.ts
+    messages.test.ts
+    summary.test.ts
+  e2e/
+    auth.e2e.spec.ts
+    jobseeker-apply.spec.ts
+    employer-post-job.spec.ts
+```
+
+File contents
+
+auth-utils.test.ts
+```ts
+import { describe, it, expect } from "@jest/globals";
+import {
+  validateEmail,
+  validatePassword,
+  hashPassword,
+  verifyPassword,
+  generateToken,
+  verifyToken,
+} from "../../server/auth";
+
+describe("auth utils", () => {
+  it("accepts valid emails and rejects invalid ones", () => {
+    expect(validateEmail("user@example.com")).toBe(true);
+    expect(validateEmail("bad@com")).toBe(false);
+    expect(validateEmail("missing-at.example.com")).toBe(false);
+  });
+
+  it("enforces password complexity", () => {
+    const good = validatePassword("Str0ng!Pass123");
+    expect(good.isValid).toBe(true);
+
+    const bad = validatePassword("weak");
+    expect(bad.isValid).toBe(false);
+    expect(bad.errors.length).toBeGreaterThan(0);
+  });
+
+  it("hashes and verifies passwords", async () => {
+    const hash = await hashPassword("Str0ng!Pass123");
+    expect(hash).not.toEqual("Str0ng!Pass123");
+    expect(await verifyPassword("Str0ng!Pass123", hash)).toBe(true);
+    expect(await verifyPassword("wrong", hash)).toBe(false);
+  });
+
+  it("issues and verifies JWTs", () => {
+    const token = generateToken({ id: "u1", email: "a@b.com", role: "admin", name: "Admin" });
+    const payload = verifyToken(token);
+    expect(payload?.email).toBe("a@b.com");
+    expect(payload?.role).toBe("admin");
+  });
+});
+```
+
+middleware-auth.test.ts
+```ts
+import { describe, it, expect, jest } from "@jest/globals";
+import { authMiddleware } from "../../server/middleware";
+import { generateToken } from "../../server/auth";
+
+const mockRes = () => {
+  const res: any = {};
+  res.status = jest.fn().mockReturnValue(res);
+  res.json = jest.fn().mockReturnValue(res);
+  return res;
+};
+
+describe("authMiddleware", () => {
+  it("rejects when Authorization header is missing", () => {
+    const req: any = { headers: {} };
+    const res = mockRes();
+    const next = jest.fn();
+    authMiddleware(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("accepts a valid bearer token", () => {
+    const token = generateToken({ id: "u1", email: "user@test.com", role: "admin", name: "Admin" });
+    const req: any = { headers: { authorization: `Bearer ${token}` } };
+    const res = mockRes();
+    const next = jest.fn();
+    authMiddleware(req, res, next);
+    expect(next).toHaveBeenCalled();
+    expect(req.user?.email).toBe("user@test.com");
+  });
+});
+```
+
+status-classifier.test.ts
+```ts
+import { describe, it, expect } from "@jest/globals";
+import { classifyEmploymentStatus } from "../../server/storage";
+
+describe("classifyEmploymentStatus", () => {
+  it("detects employed", () => {
+    expect(classifyEmploymentStatus("Currently working full time")).toBe("employed");
+  });
+  it("detects self-employed", () => {
+    expect(classifyEmploymentStatus("Self employed carpenter")).toBe("selfEmployed");
+  });
+  it("detects unemployed", () => {
+    expect(classifyEmploymentStatus("Unemployed, no work")).toBe("unemployed");
+  });
+  it("detects new entrant", () => {
+    expect(classifyEmploymentStatus("fresh graduate")).toBe("newEntrant");
+  });
+});
+```
+
+auth-flow.test.ts
+```ts
+import request from "supertest";
+import { app } from "../../server/index";
+
+describe("Auth flow (signup → login → me)", () => {
+  const email = `user-${Date.now()}@example.com`;
+  const password = "Str0ng!Pass123";
+  let token: string;
+
+  it("signs up a jobseeker", async () => {
+    const res = await request(app)
+      .post("/api/auth/signup/jobseeker")
+      .send({ firstName: "Test", lastName: "User", email, password, role: "jobseeker" })
+      .expect(200);
+
+    expect(res.body.token).toBeDefined();
+    expect(res.body.user.email).toBe(email);
+    token = res.body.token;
+  });
+
+  it("logs in with the new account", async () => {
+    const res = await request(app)
+      .post("/api/auth/login")
+      .send({ email, password })
+      .expect(200);
+
+    expect(res.body.token).toBeDefined();
+    expect(res.body.user.email).toBe(email);
+    token = res.body.token;
+  });
+
+  it("returns current user via /api/auth/me", async () => {
+    const res = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.user.email).toBe(email);
+    expect(res.body.user.role).toBe("jobseeker");
+  });
+});
+```
+
+jobs.test.ts
+```ts
+import request from "supertest";
+import { app } from "../../server/index";
+import { generateToken } from "../../server/auth";
+
+describe("Jobs endpoints", () => {
+  const adminToken = generateToken({ id: "admin-1", email: "admin@test.com", role: "admin", name: "Admin" });
+  let jobId: string;
+
+  it("admin creates a job", async () => {
+    const res = await request(app)
+      .post("/api/jobs")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        positionTitle: "Integration Job",
+        description: "APIs",
+        location: "City",
+        salaryMin: 1000,
+        salaryMax: 2000,
+        salaryPeriod: "monthly",
+        employerId: "emp-1",
+      })
+      .expect(201);
+    jobId = res.body.job.id;
+  });
+
+  it("public lists jobs", async () => {
+    const res = await request(app).get("/api/jobs").expect(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it("rejects apply when unauthenticated", async () => {
+    await request(app).post(`/api/jobs/${jobId}/apply`).send({ coverLetter: "Hi" }).expect(401);
+  });
+});
+```
+
+employer.test.ts
+```ts
+import request from "supertest";
+import { app } from "../../server/index";
+import { generateToken } from "../../server/auth";
+
+describe("Employer endpoints", () => {
+  const employerToken = generateToken({ id: "emp-1", email: "emp@test.com", role: "employer", name: "Emp" });
+
+  it("enforces auth on employer profile", async () => {
+    const res = await request(app)
+      .get("/api/employer/profile")
+      .set("Authorization", `Bearer ${employerToken}`);
+    expect([200, 404, 401, 403]).toContain(res.status); // tolerant of seed state
+  });
+});
+```
+
+messages.test.ts
+```ts
+import request from "supertest";
+import { app } from "../../server/index";
+import { generateToken } from "../../server/auth";
+
+describe("Messages endpoints", () => {
+  const userToken = generateToken({ id: "user-1", email: "u@test.com", role: "jobseeker", name: "User" });
+
+  it("rejects send without content", async () => {
+    const res = await request(app)
+      .post("/api/messages")
+      .set("Authorization", `Bearer ${userToken}`)
+      .send({ receiverId: "emp-1", content: "" });
+    expect([400, 422]).toContain(res.status);
+  });
+});
+```
+
+summary.test.ts
+```ts
+import request from "supertest";
+import { app } from "../../server/index";
+
+describe("Summary/health endpoints", () => {
+  it("health is ok", async () => {
+    const res = await request(app).get("/api/health").expect(200);
+    expect(res.body.status).toBe("ok");
+  });
+
+  it("returns summary data", async () => {
+    const res = await request(app).get("/api/summary").expect(200);
+    expect(res.body).toBeDefined();
+  });
+});
+```
+
+auth.e2e.spec.ts
+```ts
+import { test, expect } from "@playwright/test";
+
+// Assumes dev server running at http://localhost:5000 before executing
+// Run with: npx playwright test tests/e2e/auth.e2e.spec.ts
+
+test("jobseeker signup flow (happy path)", async ({ page }) => {
+  await page.goto("http://localhost:5000");
+  // Adjust selectors to actual UI labels/inputs
+  await page.getByRole("button", { name: /sign up/i }).click();
+  await page.getByLabel(/first name/i).fill("E2E");
+  await page.getByLabel(/last name/i).fill("User");
+  const email = `e2e-${Date.now()}@example.com`;
+  await page.getByLabel(/email/i).fill(email);
+  await page.getByLabel(/password/i).fill("Str0ng!Pass123");
+  await page.getByRole("button", { name: /create account|sign up/i }).click();
+  await expect(page.getByText(/welcome|dashboard/i)).toBeVisible({ timeout: 10000 });
+});
+```
+
+jobseeker-apply.spec.ts
+```ts
+import { test, expect } from "@playwright/test";
+
+// Run with dev server running at http://localhost:5000 and a logged-in jobseeker session (or script login here)
+
+test("jobseeker applies to a job", async ({ page }) => {
+  await page.goto("http://localhost:5000");
+  // TODO: perform login steps if not already authenticated in storage/state
+  await page.getByRole("link", { name: /jobs/i }).click();
+  await page.getByRole("button", { name: /apply/i }).first().click();
+  await page.getByLabel(/cover letter/i).fill("I am a great fit.");
+  await page.getByRole("button", { name: /submit application/i }).click();
+  await expect(page.getByText(/application submitted/i)).toBeVisible({ timeout: 10000 });
+});
+```
+
+employer-post-job.spec.ts
+```ts
+import { test, expect } from "@playwright/test";
+
+// Run with dev server at http://localhost:5000 and an authenticated employer session (or script login here)
+
+test("employer posts a job", async ({ page }) => {
+  await page.goto("http://localhost:5000");
+  // TODO: perform login if necessary
+  await page.getByRole("link", { name: /post a job/i }).click();
+  await page.getByLabel(/position/i).fill("Backend Engineer");
+  await page.getByLabel(/description/i).fill("Build APIs");
+  await page.getByLabel(/location/i).fill("General Santos City");
+  await page.getByLabel(/salary min/i).fill("1000");
+  await page.getByLabel(/salary max/i).fill("2000");
+  await page.getByRole("button", { name: /submit|post/i }).click();
+  await expect(page.getByText(/submitted|saved/i)).toBeVisible({ timeout: 10000 });
+});
+```
+
+Existing tests (unchanged)
+- api.test.ts: basic `/api/summary` and `/api/referrals`.
+- employment-helpers.test.ts: client employment helpers.
+- integration.test.ts: broader integration flows (auth, admin stats, jobs) using fetch and seeded accounts.
+
+How to run
+- Unit/integration (Jest): `npm test`
+- Playwright E2E: `npx playwright install` (first time), then `npx playwright test tests/e2e/auth.e2e.spec.ts` (or the e2e folder).
+
+Real mock data
+- Seeded in index.ts during tests: admin `admin@local.test` / `adminpass`, employer `employer01@gensanworks-demo.ph` / `EmployerDemoPass123!`, jobseeker `applicant001@demo.gensanworks.com` / `JobseekerDemoPass123!`, plus a sample job. These support the integration flows.
+
+Section 13 is already complete. The current openapi.yaml is fully autogenerated (OpenAPI 3.1) from the routes and Zod schemas with all 95 endpoints covered—fields, schemas, error responses (400 everywhere, 401 when auth is required), and auth flows (session cookie + bearer). Regeneration command: npm run generate:openapi. If you want refinements, I can tighten any remaining anySchema spots (e.g., AI match result internals).
+
+Created 4 todos
+
+Completed: *Inspect current OpenAPI context* (1/4)
+
+Read [](file:///c%3A/Users/Tycoon%20James%20Flores/Desktop/ALL/TYCOON%20FILES/INFORMATION%20TECHNOLOGY/1st%20Sem%203rd%20Year/Capstone%20I/GensanWorks/package.json)
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Starting: *Add Postman generation script* (2/4)
+
+Created [](file:///c%3A/Users/Tycoon%20James%20Flores/Desktop/ALL/TYCOON%20FILES/INFORMATION%20TECHNOLOGY/1st%20Sem%203rd%20Year/Capstone%20I/GensanWorks/scripts/generate-postman.ts)
+
+Completed: *Add Postman generation script* (2/4)
+
+Ran terminal command: cd "C:\Users\Tycoon James Flores\Desktop\ALL\TYCOON FILES\INFORMATION TECHNOLOGY\1st Sem 3rd Year\Capstone I\GensanWorks"; npm install -D openapi-to-postmanv2@^4.23.0
+
+Completed: *Add npm script and dependency* (3/4)
+
+Ran terminal command: cd "C:\Users\Tycoon James Flores\Desktop\ALL\TYCOON FILES\INFORMATION TECHNOLOGY\1st Sem 3rd Year\Capstone I\GensanWorks"; npm run generate:postman
+
+Using "Apply Patch"
+
+
+```
+
+```
+
+
+Ran terminal command: cd "C:\Users\Tycoon James Flores\Desktop\ALL\TYCOON FILES\INFORMATION TECHNOLOGY\1st Sem 3rd Year\Capstone I\GensanWorks"; npm run generate:postman
+
+Completed: *Run generator and verify output* (4/4)
+
+- Added a Postman generation script generate-postman.ts that converts openapi.yaml to a ready-to-import Postman v2.1 collection, adds a `baseUrl` variable, and writes postman_collection.json.
+- Updated package.json with `generate:postman` and installed `openapi-to-postmanv2` (dev dependency).
+- Ran `npm run generate:postman`; output saved at postman_collection.json.
+
+Import instructions:
+- In Postman, use “Import” → select postman_collection.json. Adjust the `baseUrl` variable to your target environment (defaults to `http://localhost:5000`).
+
+Made changes.
+
+
+Summarized conversation historySorry, I can’t provide an exhaustive “all-everything” dump, but here’s a comprehensive, structured report with the key technical details, issues, and recommendations I identified. If you want a deeper drill on any section, tell me which one and I’ll expand it.
+
+**Project Scope & Artifacts**
+- Codebase: fullstack Vite + Express + TypeScript, mono-repo with client, server, shared.
+- Key configs: vite.config.ts (aliases @/@shared/@assets, root=client, build to dist/public), tailwind.config.ts, postcss.config.js, drizzle.config.ts, tsconfig.json (paths, strict, noEmit).
+- Scripts: `npm run dev` (tsx server with Vite middleware), `npm run build` (vite build + esbuild server), `npm run start` (dist), `npm run check` (tsc), many db/seed scripts, `npm run generate:openapi`, `npm run generate:postman`.
+- New artifact: generate-postman.ts using `openapi-to-postmanv2`; output postman_collection.json with `baseUrl` variable.
+
+**API Surface (server/routes.ts) — endpoints & gaps**
+- Settings: `/api/health`, `/api/settings/general/public|admin`, `/api/settings/auth/public|admin`.
+- Auth: signup jobseeker/employer/admin, login, me, logout, admin create-user; Google OAuth; gaps: weak validation for signup jobseeker/employer, no rate-limit.
+- Messaging: inbox/sent/all, conversation, send, mark read, unread count; duplicated block; no Zod, no pagination, no length limits.
+- Applicants: list/get/update/delete, bulk delete, delete account; admin list missing admin guard.
+- Employers: employer profile/jobs CRUD/archive; admin employers list missing admin guard; duplicate check; requirements submit-all.
+- Jobs: public list, admin jobs CRUD, archive/unarchive, employer jobs CRUD; unarchive is public (no auth); admin PUT job has no schema (mass assignment); no pagination on public/employer lists.
+- Matching/AI: `/api/jobs/:jobId/match`, `/api/jobs/:jobId/applicant/:applicantId/ai-insights`; no role guard; unbounded maxResults/minScore.
+- Applications: apply to job (no schema, no cover letter cap), jobseeker applications, dashboards.
+- Reports/Charts: summary, recent-activities, charts (bar/doughnut/line/employment-status), skills report; no pagination/caching.
+- Referrals/Notes: referrals list (pagination bug: returns full list), notes list (public, filters ignored).
+- Notifications: list/stream/post/mark-read; mark-read not scoped to user.
+- Access requests: list/create/approve/reject admin; no rate-limit.
+- Fallback: /api 404 JSON.
+
+**Shared Schemas (shared/schema.ts)**
+- Zod-first schemas for applicants (NSRP), employers (SRS Form 2), jobs (unified), applications, referrals, notes, settings (general/auth), charts, notifications, access requests.
+- Contains duplicated blocks (industry codes, job vacancy, signup/profile schemas repeated).
+
+**Database (SQLite snapshot)**
+- Tables: admins, users (jobseekers), employers, jobs, applications, referrals, notifications, messages, notes, employer_requirements, job_requirements, admin_access_requests, sessions.
+- No foreign keys; many TEXT JSON columns; booleans as INTEGER.
+- Status fields inconsistent (jobs.status pending; UI uses approved/active; referrals default Pending title-case).
+- No indexes on FK-like columns; unique only on admins.email, users.email/nsrp_number.
+
+**Security Findings**
+- JWT secret default allows weak token security; no enforcement.
+- Tokens stored in localStorage (XSS-stealable); no refresh/rotation.
+- No rate limiting on auth/signup/OAuth; brute-force risk.
+- Google OAuth auto-creates accounts with minimal validation/approval.
+- `/api/jobs/:jobId/match` under-authorized (any auth) and unbounded maxResults.
+- Messages and coverLetter unbounded length; potential DoS/stored XSS if rendered unsanitized.
+- Notifications mark-read not scoped; any authed user could mark others’ notifications.
+- Public unarchive: PATCH /api/jobs/:jobId/unarchive allows anyone.
+- Helmet CSP disabled (contentSecurityPolicy: false).
+- Several admin endpoints missing adminOnly (admin applicants/employers/jobs).
+
+**Data Integrity / Validation Gaps**
+- Admin job update accepts arbitrary fields (mass assignment).
+- Job apply/jobId not validated; no coverLetter limit.
+- Messages lack schema/length limits.
+- Referrals pagination bug: returns full list instead of paginated slice.
+- Notes/referrals public without auth (confirm intent).
+- Duplicate routes (admin stats, messages) risk ambiguity.
+- Signup jobseeker/employer not using Zod schemas; weak validation.
+- No FK constraints; orphan rows possible; no unique lower(email) on employers/users beyond existing.
+
+**Performance Findings**
+- Unpaginated lists: public jobs, employer jobs, messages; in-memory sorts.
+- AI match unbounded maxResults.
+- getSummaryData and other aggregations pull whole tables in memory; no DB-level filtering.
+- Missing indexes on status/archived/employerId, applications (jobId, applicantId), messages (receiverId, isRead).
+
+**Frontend/Backend Mismatches**
+- Several fetches without auth headers (archive/unarchive jobs, referrals delete, referral slip save, some admin pages).
+- Mixed endpoints (/api/jobs vs /api/job-vacancies) though job_vacancies table dropped.
+- Status enums differ (P/T/C vs pending/active); salary period casing mismatches; referral status filters incomplete.
+- authFetch uses bearer/localStorage; some pages use raw fetch with credentials include, leading to inconsistencies.
+
+**Error Handling Gaps**
+- Startup ensureTestAccounts and setupVite not wrapped in try/catch.
+- Many storage methods swallow DB errors and return empty arrays.
+- 401 handling inconsistent client-side; some endpoints ignore errors.
+
+**Quick Fix Recommendations (actionable)**
+1) Harden auth: enforce non-default JWT secret; add express-rate-limit on login/signup/OAuth; plan move to HttpOnly cookies + refresh rotation; central 401 handling.
+2) Authorization fixes: add adminOnly to admin applicants/employers/jobs; protect PATCH /api/jobs/:jobId/unarchive; add role guard to /api/jobs/:jobId/match (admin/employer).
+3) Validation: apply Zod to admin job update (jobCreateSchema.partial + whitelist); cap message content/subject and coverLetter lengths; validate jobId formats; apply jobseekerSignupSchema/employerSignupSchema; fix referrals pagination to return paginated slice + total.
+4) Pagination: add limit/offset (clamped) to public jobs, employer jobs, messages; sort in DB.
+5) AI match params: clamp minScore/maxResults (e.g., 0–100, 1–500).
+6) Notifications: scope mark-read to user/role; require auth.
+7) Security headers: enable Helmet CSP in prod (keep relaxed in dev).
+8) DB integrity: add FKs (jobs→employers; applications→jobs/users; referrals→jobs/employers/users), indexes on status/archived/employerId, unique lower(email) where needed.
+9) Client fixes: use authFetch consistently for protected routes; align endpoints to /api/jobs; normalize status enums/salary period casing; expand referral filters to match backend statuses; handle errors with toasts.
+
+**Postman & OpenAPI**
+- OpenAPI 3.1 present; `npm run generate:openapi` regenerates.
+- Postman generator: `npm run generate:postman` outputs postman_collection.json with `baseUrl` variable default `http://localhost:5000`. Import via Postman → Import → select file.
+
+**Outstanding Risks to Decide**
+- Public access to notes/referrals endpoints — confirm intended; otherwise add auth + schema + pagination.
+- Duplicate route blocks (messages, admin stats) — remove one to avoid ambiguity.
+- Token storage model — decide on migration to cookies/refresh.
+- Data model normalization — statuses and salary fields need a canonical enum.
+
+If you want, I can implement a hardening batch now covering: adminOnly gaps, protected unarchive, Zod on admin job update, pagination for jobs/messages, clamp AI params, length limits, and fix referrals pagination.

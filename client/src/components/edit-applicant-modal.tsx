@@ -1,3 +1,4 @@
+import { EDUCATION_LEVEL_OPTIONS } from "@shared/education";
 import { useState, useEffect } from "react";
 import {
   Dialog,
@@ -9,17 +10,21 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useToast } from "@/hooks/use-toast";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Trash2 } from "lucide-react";
+import {
+  nsrpEmploymentStatusOptions,
+  nsrpEmployedBranches,
+  nsrpSelfEmploymentCategories,
+  nsrpUnemployedReasons,
+} from "@shared/schema";
+import { authFetch } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
+import { useFieldErrors, type FieldErrors } from "@/lib/field-errors";
+import { DEFAULT_MUNICIPALITY, DEFAULT_PROVINCE } from "@/lib/locations";
 
 interface EditApplicantModalProps {
   open: boolean;
@@ -36,33 +41,64 @@ export function EditApplicantModal({
 }: EditApplicantModalProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState("overview");
+
+  type EditApplicantRequiredField =
+    | "surname"
+    | "firstName"
+    | "dateOfBirth"
+    | "sex"
+    | "houseStreetVillage"
+    | "barangay"
+    | "municipality"
+    | "province";
+  const { fieldErrors, clearFieldError, setErrorsAndFocus } =
+    useFieldErrors<EditApplicantRequiredField>();
+
+  const toArray = (value: any): any[] => {
+    if (Array.isArray(value)) return value;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return [];
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        // treat as comma-separated fallback
+        return trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+      }
+      return [];
+    }
+    return [];
+  };
   
   // Helper function to normalize array fields
   const normalizeApplicantData = (data: any) => {
     if (!data) return {};
     
     // Parse JSON strings or ensure arrays
-    const parseJsonField = (field: any) => {
-      if (Array.isArray(field)) return field;
-      if (typeof field === 'string') {
-        try {
-          const parsed = JSON.parse(field);
-          return Array.isArray(parsed) ? parsed : [];
-        } catch {
-          return [];
-        }
-      }
-      return [];
-    };
+    const parseJsonField = (field: any) => toArray(field);
 
     return {
       ...data,
+      municipality: data.municipality || DEFAULT_MUNICIPALITY,
+      province: data.province || DEFAULT_PROVINCE,
       workExperience: parseJsonField(data.workExperience),
       education: parseJsonField(data.education),
       technicalTraining: parseJsonField(data.technicalTraining),
       professionalLicenses: parseJsonField(data.professionalLicenses),
       languageProficiency: parseJsonField(data.languageProficiency),
       otherSkills: parseJsonField(data.otherSkills),
+      skills: parseJsonField(data.skills),
+      otherSkillsTraining: parseJsonField(data.otherSkillsTraining),
+      preferredOccupations: parseJsonField(data.preferredOccupations),
+      preferredLocations: parseJsonField(data.preferredLocations),
+      preferredOverseasCountries: parseJsonField(data.preferredOverseasCountries),
+      familyMembers: parseJsonField(data.familyMembers),
+      dependents: parseJsonField(data.dependents),
+      references: parseJsonField(data.references),
+      documentRequirements: parseJsonField(data.documentRequirements),
+      additionalAddresses: parseJsonField(data.additionalAddresses),
     };
   };
   
@@ -92,6 +128,122 @@ export function EditApplicantModal({
       ...prev,
       [field]: value,
     }));
+
+    if (
+      field === "surname" ||
+      field === "firstName" ||
+      field === "dateOfBirth" ||
+      field === "sex" ||
+      field === "houseStreetVillage" ||
+      field === "barangay" ||
+      field === "municipality" ||
+      field === "province"
+    ) {
+      clearFieldError(field as EditApplicantRequiredField);
+    }
+  };
+
+  const syncEmploymentType = (
+    detail?: string | null,
+    category?: string | null,
+    categoryOther?: string | null,
+  ) => {
+    if (detail === "Self-employed") {
+      if (category === "Others") {
+        handleInputChange("employmentType", categoryOther || "Others");
+      } else if (category) {
+        handleInputChange("employmentType", category);
+      } else {
+        handleInputChange("employmentType", "Self-employed");
+      }
+      return;
+    }
+
+    if (detail === "Wage employed") {
+      handleInputChange("employmentType", "Wage employed");
+      return;
+    }
+
+    handleInputChange("employmentType", undefined);
+  };
+
+  const resetEmploymentDetailFields = () => {
+    handleInputChange("employmentStatusDetail", undefined);
+    handleInputChange("selfEmployedCategory", undefined);
+    handleInputChange("selfEmployedCategoryOther", "");
+  };
+
+  const resetUnemploymentFields = () => {
+    handleInputChange("unemployedReason", undefined);
+    handleInputChange("unemployedReasonOther", "");
+    handleInputChange("unemployedAbroadCountry", "");
+    handleInputChange("monthsUnemployed", undefined);
+  };
+
+  const [customSkillInput, setCustomSkillInput] = useState("");
+  const [customSkills, setCustomSkills] = useState<string[]>(() => {
+    const existing = formData.otherSkillsSpecify || "";
+    return existing ? existing.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+  });
+
+  const handleCustomSkillAdd = () => {
+    const trimmed = customSkillInput.trim();
+    if (trimmed && !customSkills.includes(trimmed)) {
+      const updated = [...customSkills, trimmed];
+      setCustomSkills(updated);
+      handleInputChange("otherSkillsSpecify", updated.join(", "));
+      setCustomSkillInput("");
+    }
+  };
+
+  const handleCustomSkillRemove = (skillToRemove: string) => {
+    const updated = customSkills.filter(s => s !== skillToRemove);
+    setCustomSkills(updated);
+    handleInputChange("otherSkillsSpecify", updated.join(", "));
+  };
+
+  const handleEmploymentStatusChange = (value: string) => {
+    handleInputChange("employmentStatus", value);
+    if (value === "Employed") {
+      resetUnemploymentFields();
+    } else if (value === "Unemployed") {
+      resetEmploymentDetailFields();
+      handleInputChange("employmentType", undefined);
+    }
+  };
+
+  const handleEmploymentStatusDetailChange = (value: string) => {
+    handleInputChange("employmentStatusDetail", value);
+    if (value !== "Self-employed") {
+      handleInputChange("selfEmployedCategory", undefined);
+      handleInputChange("selfEmployedCategoryOther", "");
+    }
+    syncEmploymentType(value, formData.selfEmployedCategory, formData.selfEmployedCategoryOther);
+  };
+
+  const handleSelfEmployedCategoryChange = (value: string) => {
+    handleInputChange("selfEmployedCategory", value);
+    if (value !== "Others") {
+      handleInputChange("selfEmployedCategoryOther", "");
+    }
+    syncEmploymentType(formData.employmentStatusDetail, value, formData.selfEmployedCategoryOther);
+  };
+
+  const handleSelfEmployedCategoryOtherChange = (value: string) => {
+    handleInputChange("selfEmployedCategoryOther", value);
+    if (formData.employmentStatusDetail === "Self-employed") {
+      handleInputChange("employmentType", value || "Others");
+    }
+  };
+
+  const handleUnemployedReasonChange = (value: string) => {
+    handleInputChange("unemployedReason", value);
+    if (value !== "Terminated/Laid off (abroad)") {
+      handleInputChange("unemployedAbroadCountry", "");
+    }
+    if (value !== "Others") {
+      handleInputChange("unemployedReasonOther", "");
+    }
   };
 
   const handleSkillToggle = (skill: typeof otherSkillsOptions[number]) => {
@@ -131,17 +283,128 @@ export function EditApplicantModal({
     handleInputChange("professionalLicenses", newLicenses);
   };
 
+  const handleFamilyMemberRemove = (idx: number) => {
+    const next = formData.familyMembers?.filter((_: any, i: number) => i !== idx) || [];
+    handleInputChange("familyMembers", next);
+  };
+
+  const handleDependentRemove = (idx: number) => {
+    const next = formData.dependents?.filter((_: any, i: number) => i !== idx) || [];
+    handleInputChange("dependents", next);
+  };
+
+  const handleReferenceRemove = (idx: number) => {
+    const next = formData.references?.filter((_: any, i: number) => i !== idx) || [];
+    handleInputChange("references", next);
+  };
+
+  const buildPayload = () => {
+    const payload: any = { ...formData };
+
+    // Add custom skills from the "Others" input to otherSkillsSpecify
+    payload.otherSkillsSpecify = customSkills.join(", ");
+
+    const arrayFields = [
+      "education",
+      "technicalTraining",
+      "professionalLicenses",
+      "languageProficiency",
+      "workExperience",
+      "otherSkills",
+      "skills",
+      "otherSkillsTraining",
+      "preferredOccupations",
+      "preferredLocations",
+      "preferredOverseasCountries",
+      "familyMembers",
+      "dependents",
+      "references",
+      "documentRequirements",
+      "additionalAddresses",
+    ];
+
+    arrayFields.forEach((field) => {
+      payload[field] = toArray(payload[field]);
+    });
+
+    // Trim strings
+    Object.entries(payload).forEach(([key, value]) => {
+      if (typeof value === "string") {
+        payload[key] = value.trim();
+        if (payload[key] === "") payload[key] = undefined;
+      }
+    });
+
+    // Numeric fields
+    const numberFields = ["monthsUnemployed"];
+    numberFields.forEach((field) => {
+      if (field in payload) {
+        const num = Number(payload[field]);
+        payload[field] = Number.isFinite(num) ? num : undefined;
+      }
+    });
+
+    // Optional enums: drop empty
+    const optionalEnumFields = [
+      "employmentStatus",
+      "employmentStatusDetail",
+      "selfEmployedCategory",
+      "selfEmployedCategoryOther",
+      "unemployedReason",
+      "unemployedReasonOther",
+      "employmentType",
+      "jobPreference",
+    ];
+    optionalEnumFields.forEach((field) => {
+      if (payload[field] === undefined || payload[field] === "") {
+        delete payload[field];
+      }
+    });
+
+    // ID fields
+    ["id", "createdAt", "updatedAt", "hasAccount", "role", "passwordHash"].forEach((f) => {
+      delete payload[f];
+    });
+
+    if (!payload.sex) {
+      payload.sex = "Male";
+    }
+
+    return payload;
+  };
+
   const handleSubmit = async () => {
+    const nextErrors: FieldErrors<EditApplicantRequiredField> = {};
+    if (!String(formData.surname || "").trim()) nextErrors.surname = "Surname is required";
+    if (!String(formData.firstName || "").trim()) nextErrors.firstName = "First name is required";
+    if (!String(formData.dateOfBirth || "").trim()) nextErrors.dateOfBirth = "Date of birth is required";
+    if (!String(formData.sex || "").trim()) nextErrors.sex = "Sex is required";
+
+    if (!String(formData.houseStreetVillage || "").trim()) {
+      nextErrors.houseStreetVillage = "House/Street/Village is required";
+    }
+    if (!String(formData.barangay || "").trim()) nextErrors.barangay = "Barangay is required";
+    if (!String(formData.municipality || "").trim()) nextErrors.municipality = "Municipality is required";
+    if (!String(formData.province || "").trim()) nextErrors.province = "Province is required";
+
+    if (Object.keys(nextErrors).length) {
+      setActiveTab("overview");
+      setErrorsAndFocus(nextErrors);
+      return;
+    }
+
     setLoading(true);
     try {
-      const response = await fetch(`/api/applicants/${formData.id}`, {
+      const payload = buildPayload();
+      const response = await authFetch(`/api/applicants/${formData.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to update applicant");
+        const errBody = await response.json().catch(() => null);
+        throw new Error(errBody?.error || errBody?.message || "Failed to update applicant");
       }
 
       toast({
@@ -164,38 +427,49 @@ export function EditApplicantModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Edit Applicant - {formData.firstName} {formData.surname}</DialogTitle>
-        </DialogHeader>
+      <DialogContent className="max-w-5xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
+        <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-5 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-semibold">Edit Applicant — {formData.firstName} {formData.surname}</DialogTitle>
+          </DialogHeader>
+        </div>
 
-        <Tabs defaultValue="personal" className="flex-1 flex flex-col overflow-hidden">
-          <TabsList className="grid w-full grid-cols-3 sticky top-0">
-            <TabsTrigger value="personal">Personal Info</TabsTrigger>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+          <TabsList className="grid w-full grid-cols-3 md:grid-cols-6 sticky top-0 bg-slate-50 z-10">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="employment">Employment</TabsTrigger>
             <TabsTrigger value="skills">Skills & Education</TabsTrigger>
+            <TabsTrigger value="ids">IDs & Preferences</TabsTrigger>
           </TabsList>
 
-          <div className="p-4 overflow-y-auto flex-1 space-y-6">
-            {/* Personal Info Tab - combines Personal and Address */}
-            <TabsContent value="personal" className="space-y-4">
+          <div className="p-4 overflow-y-auto flex-1 space-y-6 bg-white">
+            {/* Overview Tab - Personal + Address */}
+            <TabsContent value="overview" className="space-y-4">
               <h4 className="font-semibold mb-3">I. PERSONAL INFORMATION</h4>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Surname *</Label>
                   <Input
+                    aria-invalid={!!fieldErrors.surname}
                     value={formData.surname || ""}
                     onChange={(e) => handleInputChange("surname", e.target.value)}
                     placeholder="Surname"
                   />
+                  {fieldErrors.surname && (
+                    <p className="mt-1 text-xs text-destructive">{fieldErrors.surname}</p>
+                  )}
                 </div>
                 <div>
                   <Label>First Name *</Label>
                   <Input
+                    aria-invalid={!!fieldErrors.firstName}
                     value={formData.firstName || ""}
                     onChange={(e) => handleInputChange("firstName", e.target.value)}
                     placeholder="First Name"
                   />
+                  {fieldErrors.firstName && (
+                    <p className="mt-1 text-xs text-destructive">{fieldErrors.firstName}</p>
+                  )}
                 </div>
               </div>
 
@@ -223,14 +497,18 @@ export function EditApplicantModal({
                   <Label>Date of Birth *</Label>
                   <Input
                     type="date"
+                    aria-invalid={!!fieldErrors.dateOfBirth}
                     value={formData.dateOfBirth || ""}
                     onChange={(e) => handleInputChange("dateOfBirth", e.target.value)}
                   />
+                  {fieldErrors.dateOfBirth && (
+                    <p className="mt-1 text-xs text-destructive">{fieldErrors.dateOfBirth}</p>
+                  )}
                 </div>
                 <div>
                   <Label>Sex *</Label>
                   <Select value={formData.sex || "Male"} onValueChange={(v) => handleInputChange("sex", v)}>
-                    <SelectTrigger>
+                    <SelectTrigger aria-invalid={!!fieldErrors.sex}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -238,6 +516,9 @@ export function EditApplicantModal({
                       <SelectItem value="Female">Female</SelectItem>
                     </SelectContent>
                   </Select>
+                  {fieldErrors.sex && (
+                    <p className="mt-1 text-xs text-destructive">{fieldErrors.sex}</p>
+                  )}
                 </div>
               </div>
 
@@ -327,17 +608,21 @@ export function EditApplicantModal({
               <div>
                 <Label>House/Street/Village *</Label>
                 <Input
+                  aria-invalid={!!fieldErrors.houseStreetVillage}
                   value={formData.houseStreetVillage || ""}
                   onChange={(e) => handleInputChange("houseStreetVillage", e.target.value)}
                   placeholder="Address"
                 />
+                {fieldErrors.houseStreetVillage && (
+                  <p className="mt-1 text-xs text-destructive">{fieldErrors.houseStreetVillage}</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Barangay *</Label>
                   <Select value={formData.barangay || ""} onValueChange={(v) => handleInputChange("barangay", v)}>
-                    <SelectTrigger>
+                    <SelectTrigger aria-invalid={!!fieldErrors.barangay}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -346,74 +631,170 @@ export function EditApplicantModal({
                       ))}
                     </SelectContent>
                   </Select>
+                  {fieldErrors.barangay && (
+                    <p className="mt-1 text-xs text-destructive">{fieldErrors.barangay}</p>
+                  )}
                 </div>
                 <div>
                   <Label>Municipality *</Label>
                   <Input
+                    aria-invalid={!!fieldErrors.municipality}
                     value={formData.municipality || ""}
                     onChange={(e) => handleInputChange("municipality", e.target.value)}
                     placeholder="Municipality"
                   />
+                  {fieldErrors.municipality && (
+                    <p className="mt-1 text-xs text-destructive">{fieldErrors.municipality}</p>
+                  )}
                 </div>
               </div>
 
               <div>
                 <Label>Province *</Label>
                 <Input
+                  aria-invalid={!!fieldErrors.province}
                   value={formData.province || ""}
                   onChange={(e) => handleInputChange("province", e.target.value)}
                   placeholder="Province"
                 />
+                {fieldErrors.province && (
+                  <p className="mt-1 text-xs text-destructive">{fieldErrors.province}</p>
+                )}
               </div>
             </TabsContent>
 
             {/* Employment Tab */}
-            <TabsContent value="employment" className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+            <TabsContent value="employment" className="space-y-6">
+              <div className="space-y-4">
                 <div>
                   <Label>Employment Status</Label>
-                  <Select value={formData.employmentStatus || ""} onValueChange={(v) => handleInputChange("employmentStatus", v)}>
+                  <Select value={formData.employmentStatus || undefined} onValueChange={handleEmploymentStatusChange}>
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Employed">Employed</SelectItem>
-                      <SelectItem value="Self-employed">Self-employed</SelectItem>
-                      <SelectItem value="Unemployed">Unemployed</SelectItem>
-                      <SelectItem value="New Entrant/Fresh Graduate">New Entrant/Fresh Graduate</SelectItem>
-                      <SelectItem value="Finished Contract">Finished Contract</SelectItem>
-                      <SelectItem value="Resigned">Resigned</SelectItem>
-                      <SelectItem value="Retired">Retired</SelectItem>
-                      <SelectItem value="Terminated/Laid off">Terminated/Laid off</SelectItem>
+                      {nsrpEmploymentStatusOptions.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {status}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label>Employment Type</Label>
-                  <Select value={formData.employmentType || ""} onValueChange={(v) => handleInputChange("employmentType", v)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="wage employed">Wage Employed (Job Seeker)</SelectItem>
-                      <SelectItem value="self-employed">Self-Employed (Freelancer)</SelectItem>
-                      <SelectItem value="Fisherman/Fisherfolk">Fisherman/Fisherfolk</SelectItem>
-                      <SelectItem value="Vendor/Retailer">Vendor/Retailer</SelectItem>
-                      <SelectItem value="Home-based worker">Home-based worker</SelectItem>
-                      <SelectItem value="Transport">Transport</SelectItem>
-                      <SelectItem value="Domestic Worker">Domestic Worker</SelectItem>
-                      <SelectItem value="Freelancer">Freelancer</SelectItem>
-                      <SelectItem value="Artisan/Craft Worker">Artisan/Craft Worker</SelectItem>
-                      <SelectItem value="Others">Others</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+
+                {formData.employmentStatus === "Employed" && (
+                  <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                    <div>
+                      <Label>Employment Type</Label>
+                      <Select
+                        value={formData.employmentStatusDetail || undefined}
+                        onValueChange={handleEmploymentStatusDetailChange}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {nsrpEmployedBranches.map((branch) => (
+                            <SelectItem key={branch} value={branch}>
+                              {branch}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {formData.employmentStatusDetail === "Self-employed" && (
+                      <>
+                        <div>
+                          <Label>Self-employed Category</Label>
+                          <Select
+                            value={formData.selfEmployedCategory || undefined}
+                            onValueChange={handleSelfEmployedCategoryChange}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {nsrpSelfEmploymentCategories.map((category) => (
+                                <SelectItem key={category} value={category}>
+                                  {category}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {formData.selfEmployedCategory === "Others" && (
+                          <Input
+                            value={formData.selfEmployedCategoryOther || ""}
+                            onChange={(e) => handleSelfEmployedCategoryOtherChange(e.target.value)}
+                            placeholder="Please specify"
+                          />
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {formData.employmentStatus === "Unemployed" && (
+                  <div className="space-y-3 rounded-2xl border border-rose-200 bg-rose-50/60 p-4">
+                    <div>
+                      <Label>Reason for unemployment</Label>
+                      <Select
+                        value={formData.unemployedReason || undefined}
+                        onValueChange={handleUnemployedReasonChange}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select reason" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {nsrpUnemployedReasons.map((reason) => (
+                            <SelectItem key={reason} value={reason}>
+                              {reason}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {formData.unemployedReason === "Others" && (
+                      <Input
+                        value={formData.unemployedReasonOther || ""}
+                        onChange={(e) => handleInputChange("unemployedReasonOther", e.target.value)}
+                        placeholder="Specify reason"
+                      />
+                    )}
+                    {formData.unemployedReason === "Terminated/Laid off (abroad)" && (
+                      <Input
+                        value={formData.unemployedAbroadCountry || ""}
+                        onChange={(e) => handleInputChange("unemployedAbroadCountry", e.target.value)}
+                        placeholder="Country of employment"
+                      />
+                    )}
+                    <div>
+                      <Label>How many months looking for work?</Label>
+                      <Input
+                        type="number"
+                        value={formData.monthsUnemployed ?? ""}
+                        onChange={(e) =>
+                          handleInputChange(
+                            "monthsUnemployed",
+                            e.target.value ? parseInt(e.target.value) : undefined,
+                          )
+                        }
+                        placeholder="e.g., 3"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center space-x-2">
                 <Checkbox
-                  checked={formData.isOFW || false}
-                  onCheckedChange={(v) => handleInputChange("isOFW", v)}
+                  checked={!!formData.isOFW}
+                  onCheckedChange={(checked) => {
+                    const value = checked === true;
+                    handleInputChange("isOFW", value);
+                    if (!value) handleInputChange("owfCountry", "");
+                  }}
                 />
                 <Label>Are you an OFW?</Label>
               </div>
@@ -428,8 +809,15 @@ export function EditApplicantModal({
 
               <div className="flex items-center space-x-2">
                 <Checkbox
-                  checked={formData.isFormerOFW || false}
-                  onCheckedChange={(v) => handleInputChange("isFormerOFW", v)}
+                  checked={!!formData.isFormerOFW}
+                  onCheckedChange={(checked) => {
+                    const value = checked === true;
+                    handleInputChange("isFormerOFW", value);
+                    if (!value) {
+                      handleInputChange("formerOFWCountry", "");
+                      handleInputChange("returnToPHDate", "");
+                    }
+                  }}
                 />
                 <Label>Are you a former OFW?</Label>
               </div>
@@ -452,8 +840,12 @@ export function EditApplicantModal({
 
               <div className="flex items-center space-x-2">
                 <Checkbox
-                  checked={formData.is4PSBeneficiary || false}
-                  onCheckedChange={(v) => handleInputChange("is4PSBeneficiary", v)}
+                  checked={!!formData.is4PSBeneficiary}
+                  onCheckedChange={(checked) => {
+                    const value = checked === true;
+                    handleInputChange("is4PSBeneficiary", value);
+                    if (!value) handleInputChange("householdID", "");
+                  }}
                 />
                 <Label>Are you a 4Ps beneficiary?</Label>
               </div>
@@ -595,11 +987,11 @@ export function EditApplicantModal({
                         <SelectValue placeholder="Level" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Elementary">Elementary</SelectItem>
-                        <SelectItem value="Secondary (K-12)">Secondary (K-12)</SelectItem>
-                        <SelectItem value="Senior High School">Senior High School</SelectItem>
-                        <SelectItem value="Tertiary">Tertiary</SelectItem>
-                        <SelectItem value="Graduate Studies">Graduate Studies</SelectItem>
+                        {EDUCATION_LEVEL_OPTIONS.filter((level) => level !== "No specific requirement").map((level) => (
+                          <SelectItem key={level} value={level}>
+                            {level}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <Input
@@ -712,7 +1104,7 @@ export function EditApplicantModal({
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      const newLicenses = [...(formData.professionalLicenses || []), { license: "", validUntil: "" }];
+                      const newLicenses = [...(formData.professionalLicenses || []), { eligibility: "", dateTaken: "", licenseNumber: "", validUntil: "", issuedBy: "", rating: "", examPlace: "" }];
                       handleInputChange("professionalLicenses", newLicenses);
                     }}
                   >
@@ -734,23 +1126,34 @@ export function EditApplicantModal({
                       </Button>
                     </div>
                     <Input
-                      value={license.license || ""}
+                      value={license.eligibility || ""}
                       onChange={(e) => {
                         const newLicenses = [...(formData.professionalLicenses || [])];
-                        newLicenses[idx] = { ...license, license: e.target.value };
+                        newLicenses[idx] = { ...license, eligibility: e.target.value };
                         handleInputChange("professionalLicenses", newLicenses);
                       }}
-                      placeholder="License/Certificate Title"
+                      placeholder="Eligibility/License Title"
                     />
-                    <Input
-                      value={license.validUntil || ""}
-                      onChange={(e) => {
-                        const newLicenses = [...(formData.professionalLicenses || [])];
-                        newLicenses[idx] = { ...license, validUntil: e.target.value };
-                        handleInputChange("professionalLicenses", newLicenses);
-                      }}
-                      placeholder="Valid Until"
-                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        value={license.licenseNumber || ""}
+                        onChange={(e) => {
+                          const newLicenses = [...(formData.professionalLicenses || [])];
+                          newLicenses[idx] = { ...license, licenseNumber: e.target.value };
+                          handleInputChange("professionalLicenses", newLicenses);
+                        }}
+                        placeholder="License Number"
+                      />
+                      <Input
+                        value={license.validUntil || ""}
+                        onChange={(e) => {
+                          const newLicenses = [...(formData.professionalLicenses || [])];
+                          newLicenses[idx] = { ...license, validUntil: e.target.value };
+                          handleInputChange("professionalLicenses", newLicenses);
+                        }}
+                        placeholder="Valid Until (YYYY-MM-DD)"
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -838,8 +1241,7 @@ export function EditApplicantModal({
                       <SelectContent>
                         <SelectItem value="Permanent">Permanent</SelectItem>
                         <SelectItem value="Contractual">Contractual</SelectItem>
-                        <SelectItem value="Part-time">Part-time</SelectItem>
-                        <SelectItem value="Project-based">Project-based</SelectItem>
+                        <SelectItem value="Temporary">Temporary</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -863,15 +1265,339 @@ export function EditApplicantModal({
                 {formData.otherSkills?.includes("Others") && (
                   <div className="mt-3">
                     <Label>Please specify other skills</Label>
-                    <Input
-                      value={formData.otherSkillsSpecify || ""}
-                      onChange={(e) => handleInputChange("otherSkillsSpecify", e.target.value)}
-                      placeholder="Specify other skills"
-                    />
+                    <div className="flex gap-2 mb-3">
+                      <Input
+                        value={customSkillInput}
+                        onChange={(e) => setCustomSkillInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleCustomSkillAdd();
+                          }
+                        }}
+                        placeholder="Type skill and press Enter"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleCustomSkillAdd}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                    {customSkills.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {customSkills.map((skill, idx) => (
+                          <div
+                            key={idx}
+                            className="inline-flex items-center gap-1 bg-green-50 text-green-700 px-3 py-1 rounded-full text-sm border border-green-200"
+                          >
+                            <span>{skill}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleCustomSkillRemove(skill)}
+                              className="ml-1 hover:text-green-900"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
+
+              <div className="border-t pt-6 mt-6 space-y-3">
+                <h4 className="font-semibold">IX. Job Preferences & Locations</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <Label>Preferred Occupations (comma separated)</Label>
+                    <Input
+                      value={(formData.preferredOccupations || []).join(", ")}
+                      onChange={(e) => handleInputChange("preferredOccupations", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                      placeholder="e.g., Nurse, Web Developer"
+                    />
+                  </div>
+                  <div>
+                    <Label>Preferred Locations (comma separated)</Label>
+                    <Input
+                      value={(formData.preferredLocations || []).join(", ")}
+                      onChange={(e) => handleInputChange("preferredLocations", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                      placeholder="e.g., General Santos City, Davao"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <Label>Preferred Overseas Countries (comma separated)</Label>
+                    <Input
+                      value={(formData.preferredOverseasCountries || []).join(", ")}
+                      onChange={(e) => handleInputChange("preferredOverseasCountries", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+                      placeholder="e.g., Canada, Japan"
+                    />
+                  </div>
+                  <div>
+                    <Label>Job Preference</Label>
+                    <Select
+                      value={formData.jobPreference || undefined}
+                      onValueChange={(v) => handleInputChange("jobPreference", v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select preference" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Full-Time">Full-Time</SelectItem>
+                        <SelectItem value="Part-Time">Part-Time</SelectItem>
+                        <SelectItem value="Contractual">Contractual</SelectItem>
+                        <SelectItem value="Seasonal">Seasonal</SelectItem>
+                        <SelectItem value="Internship">Internship</SelectItem>
+                        <SelectItem value="Flexible">Flexible</SelectItem>
+                        <SelectItem value="Project-Based">Project-Based</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
             </TabsContent>
+
+            {/* IDs & Preferences */}
+            <TabsContent value="ids" className="space-y-4">
+              <h4 className="font-semibold mb-3">Identification & NSRP</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <Label>Government ID Type</Label>
+                  <Input
+                    value={formData.governmentIdType || ""}
+                    onChange={(e) => handleInputChange("governmentIdType", e.target.value)}
+                    placeholder="e.g., PhilHealth, SSS, UMID"
+                  />
+                </div>
+                <div>
+                  <Label>Government ID Number</Label>
+                  <Input
+                    value={formData.governmentIdNumber || ""}
+                    onChange={(e) => handleInputChange("governmentIdNumber", e.target.value)}
+                    placeholder="ID Number"
+                  />
+                </div>
+                <div>
+                  <Label>NSRP Number</Label>
+                  <Input
+                    value={formData.nsrpNumber || ""}
+                    onChange={(e) => handleInputChange("nsrpNumber", e.target.value)}
+                    placeholder="NSRP Number"
+                  />
+                </div>
+                <div>
+                  <Label>NSRP Registration No.</Label>
+                  <Input
+                    value={formData.nsrpRegistrationNo || ""}
+                    onChange={(e) => handleInputChange("nsrpRegistrationNo", e.target.value)}
+                    placeholder="NSRP Registration No."
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    checked={!!formData.willingToRelocate}
+                    onCheckedChange={(checked) => handleInputChange("willingToRelocate", checked === true)}
+                  />
+                  <Label>Willing to relocate</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    checked={!!formData.willingToWorkOverseas}
+                    onCheckedChange={(checked) => handleInputChange("willingToWorkOverseas", checked === true)}
+                  />
+                  <Label>Willing to work overseas</Label>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Family & References - REMOVED (Not part of NSRP form) */}
+            {/* <TabsContent value="family" className="space-y-6">
+              <div>
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="font-semibold">Family Members</h4>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const next = [...(formData.familyMembers || []), { name: "", relationship: "", age: "" }];
+                      handleInputChange("familyMembers", next);
+                    }}
+                  >
+                    Add Member
+                  </Button>
+                </div>
+                {(Array.isArray(formData.familyMembers) ? formData.familyMembers : []).map((member: any, idx: number) => (
+                  <div key={idx} className="border p-3 rounded mb-3 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-semibold">Member {idx + 1}</span>
+                      <Button variant="ghost" size="sm" onClick={() => handleFamilyMemberRemove(idx)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <Input
+                      value={member.name || ""}
+                      onChange={(e) => {
+                        const next = [...(formData.familyMembers || [])];
+                        next[idx] = { ...member, name: e.target.value };
+                        handleInputChange("familyMembers", next);
+                      }}
+                      placeholder="Name"
+                    />
+                    <Input
+                      value={member.relationship || ""}
+                      onChange={(e) => {
+                        const next = [...(formData.familyMembers || [])];
+                        next[idx] = { ...member, relationship: e.target.value };
+                        handleInputChange("familyMembers", next);
+                      }}
+                      placeholder="Relationship"
+                    />
+                    <Input
+                      type="number"
+                      value={member.age || ""}
+                      onChange={(e) => {
+                        const next = [...(formData.familyMembers || [])];
+                        next[idx] = { ...member, age: e.target.value };
+                        handleInputChange("familyMembers", next);
+                      }}
+                      placeholder="Age"
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="font-semibold">Dependents</h4>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const next = [...(formData.dependents || []), { name: "", relationship: "", age: "" }];
+                      handleInputChange("dependents", next);
+                    }}
+                  >
+                    Add Dependent
+                  </Button>
+                </div>
+                {(Array.isArray(formData.dependents) ? formData.dependents : []).map((dep: any, idx: number) => (
+                  <div key={idx} className="border p-3 rounded mb-3 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-semibold">Dependent {idx + 1}</span>
+                      <Button variant="ghost" size="sm" onClick={() => handleDependentRemove(idx)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <Input
+                      value={dep.name || ""}
+                      onChange={(e) => {
+                        const next = [...(formData.dependents || [])];
+                        next[idx] = { ...dep, name: e.target.value };
+                        handleInputChange("dependents", next);
+                      }}
+                      placeholder="Name"
+                    />
+                    <Input
+                      value={dep.relationship || ""}
+                      onChange={(e) => {
+                        const next = [...(formData.dependents || [])];
+                        next[idx] = { ...dep, relationship: e.target.value };
+                        handleInputChange("dependents", next);
+                      }}
+                      placeholder="Relationship"
+                    />
+                    <Input
+                      type="number"
+                      value={dep.age || ""}
+                      onChange={(e) => {
+                        const next = [...(formData.dependents || [])];
+                        next[idx] = { ...dep, age: e.target.value };
+                        handleInputChange("dependents", next);
+                      }}
+                      placeholder="Age"
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="font-semibold">Character References</h4>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const next = [...(formData.references || []), { name: "", contactNumber: "", relationship: "" }];
+                      handleInputChange("references", next);
+                    }}
+                  >
+                    Add Reference
+                  </Button>
+                </div>
+                {(Array.isArray(formData.references) ? formData.references : []).map((ref: any, idx: number) => (
+                  <div key={idx} className="border p-3 rounded mb-3 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-semibold">Reference {idx + 1}</span>
+                      <Button variant="ghost" size="sm" onClick={() => handleReferenceRemove(idx)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <Input
+                      value={ref.name || ""}
+                      onChange={(e) => {
+                        const next = [...(formData.references || [])];
+                        next[idx] = { ...ref, name: e.target.value };
+                        handleInputChange("references", next);
+                      }}
+                      placeholder="Name"
+                    />
+                    <Input
+                      value={ref.relationship || ""}
+                      onChange={(e) => {
+                        const next = [...(formData.references || [])];
+                        next[idx] = { ...ref, relationship: e.target.value };
+                        handleInputChange("references", next);
+                      }}
+                      placeholder="Relationship"
+                    />
+                    <Input
+                      value={ref.contactNumber || ""}
+                      onChange={(e) => {
+                        const next = [...(formData.references || [])];
+                        next[idx] = { ...ref, contactNumber: e.target.value };
+                        handleInputChange("references", next);
+                      }}
+                      placeholder="Contact Number"
+                    />
+                  </div>
+                ))}
+              </div>
+            </TabsContent> */}
+
+            {/* Notes - REMOVED (Not part of NSRP form) */}
+            {/* <TabsContent value="notes" className="space-y-4">
+              <h4 className="font-semibold">Attachments & Notes</h4>
+              <Textarea
+                value={formData.attachments || ""}
+                onChange={(e) => handleInputChange("attachments", e.target.value)}
+                placeholder="Links or references to attachments"
+              />
+              <Textarea
+                value={formData.notes || ""}
+                onChange={(e) => handleInputChange("notes", e.target.value)}
+                placeholder="Additional notes about the applicant"
+              />
+            </TabsContent> */}
           </div>
         </Tabs>
 

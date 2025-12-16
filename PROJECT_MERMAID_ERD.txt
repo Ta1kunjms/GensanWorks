@@ -1,0 +1,190 @@
+Mermaid ERD Draft — GensanWorks (paste into Mermaid renderer)
+
+NOTE
+- This ERD is based on server/unified-schema.ts.
+- Many relationships are “logical” (no explicit FK constraints in the Drizzle schema).
+- For polymorphic relationships (messages/notifications), the ERD uses notes instead of strict FK edges.
+
+-------------------------
+erDiagram
+  ADMINS {
+    text id PK
+    text name
+    text email UQ
+    text password_hash
+    text role
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  USERS {
+    text id PK
+    text email UQ
+    text password_hash
+    boolean has_account
+    text role
+    text surname
+    text first_name
+    text middle_name
+    text last_name
+    text nsrp_number UQ
+    boolean archived
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  EMPLOYERS {
+    text id PK
+    text establishment_name
+    text email
+    boolean has_account
+    text password_hash
+    text account_status
+    boolean archived
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  JOBS {
+    text id PK
+    text employer_id FK
+    text position_title
+    text status
+    boolean archived
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  APPLICATIONS {
+    text id PK
+    text job_id FK
+    text applicant_id FK
+    text employer_id FK
+    text status
+    text resume_url
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  REFERRALS {
+    text referral_id PK
+    text applicant_id FK
+    text employer_id FK
+    text vacancy_id
+    text status
+    text date_referred
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  EMPLOYER_REQUIREMENTS {
+    text id PK
+    text employer_id FK
+    boolean srs_form_submitted
+    boolean business_permit_submitted
+    boolean bir2303_submitted
+    boolean company_profile_submitted
+    boolean dole_certification_submitted
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  JOB_REQUIREMENTS {
+    text id PK
+    text job_id FK
+    text employer_id
+    boolean referral_slip_submitted
+    boolean employment_contract_submitted
+    boolean medical_certificate_submitted
+    boolean barangay_clearance_submitted
+    boolean police_clearance_submitted
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  ADMIN_ACCESS_REQUESTS {
+    text id PK
+    text name
+    text email
+    text phone
+    text organization
+    text status
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  NOTIFICATIONS {
+    text id PK
+    text user_id
+    text role
+    text type
+    text message
+    boolean read
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  MESSAGES {
+    text id PK
+    text sender_id
+    text sender_role
+    text receiver_id
+    text receiver_role
+    text subject
+    text content
+    boolean is_read
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  NOTES {
+    text id PK
+    text title
+    text body
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  SESSIONS {
+    text sid PK
+    json sess
+    int expire
+  }
+
+  SKILL_SUGGESTIONS {
+    text id PK
+    text name
+    text normalized_name UQ
+    timestamp created_at
+    timestamp updated_at
+  }
+
+  %% Core ownership
+  EMPLOYERS ||--o{ JOBS : posts
+
+  %% Applications
+  JOBS ||--o{ APPLICATIONS : receives
+  USERS ||--o{ APPLICATIONS : submits
+  EMPLOYERS ||--o{ APPLICATIONS : reviews
+
+  %% Referrals
+  USERS ||--o{ REFERRALS : referred
+  EMPLOYERS ||--o{ REFERRALS : destination
+
+  %% Requirements
+  EMPLOYERS ||--o| EMPLOYER_REQUIREMENTS : compliance
+  JOBS ||--o| JOB_REQUIREMENTS : checklist
+
+  %% Notes
+  %% NOTES currently has no FK link in schema.
+
+  %% Polymorphic links (diagram as notes)
+  %% - NOTIFICATIONS.user_id + NOTIFICATIONS.role targets:
+  %%     role=admin -> ADMINS.id
+  %%     role=employer -> EMPLOYERS.id
+  %%     role=jobseeker/freelancer -> USERS.id
+  %% - MESSAGES.sender_id/receiver_id similarly target USERS or EMPLOYERS based on sender_role/receiver_role.
+
+-------------------------
+Optional: a “more detailed” ERD variant
+- If you want, I can produce a second Mermaid ERD with more columns for USERS/EMPLOYERS/JOBS (NSRP + SRS fields), but it will be very large.

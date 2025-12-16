@@ -1,0 +1,354 @@
+GensanWorks — Diagram-Ready Project Summary (Dec 15, 2025)
+
+1) What this system is
+- GensanWorks is a full-stack employment/job-matching platform intended for a city PESO workflow.
+- Core actors (roles):
+  - Admin: manages users/employers/jobs, runs analytics/reports, runs AI job matching, handles access requests.
+  - Employer: posts jobs, reviews applicants, manages hiring pipeline, uploads compliance/requirements.
+  - Jobseeker/Freelancer: maintains an NSRP-style profile, browses jobs, applies, tracks applications.
+- Key differentiator: AI-assisted matching via Groq LLM (server/ai-job-matcher.ts).
+
+2) High-level architecture (containers)
+- Single Node/Express server serves BOTH:
+  - API endpoints under /api/*
+  - Client SPA (React) via Vite middleware in dev, or static build in prod
+- Client: React + Vite + TypeScript + Tailwind + shadcn/ui + React Query + Wouter.
+- Server: Express 5 + TypeScript + Drizzle ORM + SQLite (default) or Postgres (optional) + JWT auth.
+- Shared contract: shared/schema.ts (Zod schemas + types) used by both server and client.
+
+3) Runtime flows (important for diagrams)
+A) Development runtime
+- npm run dev -> tsx server/index.ts
+- server/index.ts mounts API routes, then mounts Vite middleware (server/vite.ts) so the same port serves the SPA.
+- Default port: 5000 (PORT env var supported).
+
+B) Production runtime
+- npm run build -> vite build (client) + esbuild bundle server/index.ts -> dist/index.js
+- npm start -> node dist/index.js
+- server/vite.ts serveStatic serves dist/public (if present).
+
+C) Data flow
+- Browser (React) -> fetch() -> Express routes (server/routes.ts)
+- Routes validate inputs using Zod schemas from shared/schema.ts.
+- Routes call storage layer (server/storage.ts), which uses Drizzle to query/modify DB (SQLite or Postgres).
+- Responses are JSON. Server has a middleware that logs API JSON responses (truncated).
+
+4) Repo map (what each top folder means)
+- client/                  Frontend (React/Vite)
+  - client/src/App.tsx     Route map (Wouter) for public, admin, employer, jobseeker shells
+  - client/src/pages/*     UI pages by role
+  - client/src/components  Shared UI components and app layout (sidebar/navbar)
+  - client/src/lib/*       Auth context, query client, utilities
+- server/                  Backend (Express)
+  - server/index.ts        Server entrypoint; swagger UI; Vite integration; security headers
+  - server/routes.ts       Main API route definitions (large file)
+  - server/middleware.ts   JWT auth + role guards
+  - server/auth.ts         JWT helpers + password hashing + Passport Google OAuth strategy
+  - server/storage.ts      Data access layer + analytics + normalization helpers
+  - server/database.ts     Drizzle initialization + migrations + fallback + test seeding
+  - server/unified-schema.ts Unified Drizzle schema for all tables (SQLite + Postgres variants)
+  - server/ai-job-matcher.ts AI scoring + Groq calls
+  - server/fileUpload.ts   Multer upload handling and URL helpers (used by employer-doc uploads)
+  - server/websocket.ts    Stub (currently no-op). WebSocket startup is commented out in server/index.ts.
+  - server/vite.ts         Dev Vite middleware + prod static serving
+- shared/
+  - shared/schema.ts       Canonical Zod schemas/types for API payloads and UI
+- migrations/              SQL migrations (Drizzle)
+- scripts/                 Seeding, migration helpers, OpenAPI/Postman generation
+- tests/ + e2e/            Jest tests + Playwright e2e
+- openapi.yaml             Generated OpenAPI spec (large); served at /openapi.yaml and /docs
+
+5) Authentication & authorization (important diagram note)
+- Server uses JWT Bearer tokens:
+  - server/auth.ts: generateToken(), verifyToken()
+  - server/middleware.ts: authMiddleware reads Authorization: Bearer <token>
+- Client stores token + user in localStorage:
+  - client/src/lib/auth.tsx: AuthProvider, useAuth(), authFetch() attaches Bearer token
+- Role checks:
+  - adminOnly middleware
+  - roleMiddleware("employer"|"jobseeker"|"freelancer"|"admin")
+- Google OAuth:
+  - Passport strategy configured in server/auth.ts (requires GOOGLE_CLIENT_ID/SECRET)
+  - OAuth endpoints exist in OpenAPI (/auth/google and /auth/google/callback)
+  - Note: server/index.ts initializes Passport, but session-based auth appears not used; JWT is primary.
+
+6) Major database concepts (ERD-ready)
+DB is defined in server/unified-schema.ts. Core tables you’ll likely diagram:
+- admins                 Admin accounts
+- users                  Jobseeker/freelancer accounts + NSRP profile fields (many JSON columns)
+- employers               Employer establishments + login credentials + requirements status
+- jobs                    Job postings (position title, salary, location, archived/status, vacancies, etc.)
+- applications            Job applications (jobId, applicantId, status, notes, timestamps)
+- referrals               Referral slip tracking (maps to application/employment outcomes)
+- notifications           Notifications (role + userId + type + message + read)
+- messages                Messaging between roles (conversation, unread, read markers)
+- notes                   Notes system
+- admin_access_requests   Request workflow for admin access
+- skill_suggestions       Autocomplete seed + dynamic skill suggestion entries
+(There may be more tables in unified-schema.ts; the list above is the “diagram core”.)
+
+7) API surface (grouped list)
+Source of truth:
+- server/routes.ts (implementation)
+- openapi.yaml (generated spec)
+
+A) Documentation endpoints (server/index.ts)
+- GET /openapi.json
+- GET /openapi.yaml
+- GET /docs (Swagger UI)
+
+B) Health / system
+- GET /api/health
+
+C) Public / landing analytics
+- GET /api/public/impact
+
+D) Auth / accounts
+- POST /api/auth/signup/jobseeker
+- POST /api/auth/signup/employer
+- POST /api/auth/signup/admin
+- POST /api/auth/login
+- GET  /api/auth/me
+- POST /api/auth/logout
+- DELETE /api/account
+- GET /auth/google
+- GET /auth/google/callback
+
+E) Settings
+- GET /api/settings/general/public
+- GET /api/settings/general            (admin)
+- PUT /api/settings/general            (admin)
+- GET /api/settings/auth/public
+- GET /api/settings/auth               (admin)
+- PUT /api/settings/auth               (admin)
+
+F) Skills suggestions
+- GET  /api/skills/suggestions
+- POST /api/skills/suggestions         (auth)
+
+G) Messaging
+- GET    /api/messages                 (auth)
+- POST   /api/messages                 (auth)
+- GET    /api/messages/conversation/:userId (auth)
+- DELETE /api/messages/conversation/:userId (auth)
+- PATCH  /api/messages/:id/read        (auth)
+- GET    /api/messages/unread/count    (auth)
+
+H) Admin domain
+- GET  /api/admin/stats                (admin)
+- GET  /api/admin/users                (admin)
+- PUT  /api/admin/users/:id            (admin)
+- DELETE /api/admin/users/:id          (admin)
+- PUT  /api/admin/users/:id/suspend    (admin)
+- GET  /api/admin/jobs                 (admin)
+- POST /api/admin/jobs                 (admin)
+- PUT  /api/admin/jobs/:id             (admin)
+- DELETE /api/admin/jobs/:id           (admin)
+- GET  /api/admin/access-requests      (admin)
+- POST /api/admin/create-admin-user    (admin)
+- GET  /api/admin/applications         (admin)
+- GET  /api/admin/stakeholders         (admin)
+- GET  /api/admin/applicants           (admin)
+- GET  /api/admin/employers            (admin)
+- GET  /api/admin/dashboard            (admin)
+- GET  /api/admin/system-alerts        (admin)
+
+I) Jobs & job vacancies
+- GET  /api/job-vacancies
+- GET  /api/jobs
+- POST /api/jobs                       (admin)
+- PUT  /api/jobs/:jobId                (admin)
+- DELETE /api/jobs/:jobId              (admin)
+- PATCH /api/jobs/:jobId/archive       (admin)
+- PATCH /api/jobs/:jobId/unarchive     (admin)
+- GET  /api/jobs/archived
+- GET  /api/jobs/:jobId                (OpenAPI shows path; usage depends on implementation)
+- POST /api/jobs/:jobId/apply          (auth)
+- GET  /api/jobs/:jobId/match          (auth) AI matching results for a job
+- GET  /api/jobs/:jobId/applicant/:applicantId/ai-insights (auth) AI explanation/insights
+- POST /api/jobs/:jobId/shortlist      (auth)
+
+J) Jobseeker domain
+- GET  /api/jobseeker/applications     (auth)
+- GET  /api/jobseeker/dashboard        (auth)
+- POST /api/jobseeker/profile-image    (auth)
+- POST /api/jobseeker/change-password  (auth)
+
+K) Employer domain
+- GET  /api/employer/profile           (employer)
+- PUT  /api/employer/profile           (employer)
+- GET  /api/employer/jobs              (auth; intended employer)
+- POST /api/employer/jobs              (auth; intended employer)
+- PUT  /api/employer/jobs/:jobId       (auth; intended employer)
+- DELETE /api/employer/jobs/:jobId     (auth; intended employer)
+- PATCH /api/employer/jobs/:jobId/archive (auth; intended employer)
+- GET  /api/employer/applications      (auth; intended employer)
+- PUT  /api/employer/applications/:id  (auth; intended employer)
+- DELETE /api/employer/applications/:id (auth; intended employer)
+- GET  /api/employer/dashboard         (auth; intended employer)
+
+L) Employers (admin operations + public listing)
+- GET  /api/employers                  (public listing/filter)
+- POST /api/employers                  (admin)
+- GET  /api/employers/archived         (admin)
+- GET  /api/employers/:id              (admin)
+- PUT  /api/employers/:id              (admin)
+- DELETE /api/employers/:id            (admin)
+- PATCH /api/employers/:id/archive     (admin)
+- PATCH /api/employers/:id/approve     (admin)
+- PATCH /api/employers/:id/reject      (admin)
+- POST /api/employers/check-duplicate  (admin)
+- POST /api/employers/bulk-delete      (admin)
+- PATCH /api/employers/:id/requirements/submit-all (admin)
+- POST /api/upload/employer-docs       (auth) multipart file upload
+
+M) Applicants
+- POST /api/applicants                 (admin)
+- GET  /api/applicants                 (auth)
+- GET  /api/applicants/:id             (auth)
+- PUT  /api/applicants/:id             (auth)
+- DELETE /api/applicants/:id           (admin)
+- POST /api/applicants/bulk-delete     (admin)
+
+N) Reports / analytics
+- GET /api/summary
+- GET /api/recent-activities
+- GET /api/charts/bar
+- GET /api/charts/doughnut
+- GET /api/charts/line
+- GET /api/charts/employment-status
+- GET /api/reports/skills
+
+O) Notifications
+- GET  /api/notifications
+- GET  /api/notifications/stream
+- PATCH /api/notifications/:id/read
+
+P) Referrals
+- GET    /api/referrals                (auth)
+- POST   /api/referrals                (auth)
+- PATCH  /api/referrals/:referralId/status (auth)
+- DELETE /api/referrals/:referralId    (auth)
+
+Q) Notes
+- GET /api/notes                       (auth)
+
+7.1) Diagram note: “auth” vs “public”
+- Many routes are guarded by authMiddleware (JWT Bearer).
+- Some are additionally adminOnly or roleMiddleware("employer").
+- Public endpoints include /api/jobs (listing), /api/employers (listing), /api/public/impact, and settings public endpoints.
+
+8) Client route map (SPA pages)
+Source: client/src/App.tsx
+- Public pages:
+  - / (Landing)
+  - /accessibility, /helpdesk, /about, /help, /privacy, /contact
+  - /oauth/callback and /oauth-callback
+  - /admin/login, /admin/signup
+  - /employer/login, /employer/signup
+  - /jobseeker/login, /jobseeker/signup
+- Admin shell:
+  - /admin/dashboard
+  - /admin/access-requests
+  - /admin/users
+  - /admin/jobs (+ archived + matching)
+  - /admin/applicants
+  - /admin/employers
+  - /admin/reports
+  - /admin/matching
+  - /admin/settings (+ auth settings)
+  - /admin/notifications
+  - /admin/help
+  - /admin/use-case-diagram (+ per role)
+- Employer shell:
+  - /employer/dashboard
+  - /employer/jobs
+  - /employer/applications
+  - /employer/notifications
+  - /employer/messages
+  - /employer/profile
+  - /employer/settings
+- Jobseeker shell:
+  - /jobseeker/dashboard
+  - /jobseeker/jobs
+  - /jobseeker/applications
+  - /jobseeker/notifications
+  - /jobseeker/messages
+  - /jobseeker/profile
+  - /jobseeker/settings
+
+9) AI job matching (component-level diagram hints)
+- server/ai-job-matcher.ts provides a hybrid approach:
+  - Phase 1: fast rule-based scoring over all applicants
+  - Phase 2: optional Groq LLM evaluation for top candidates (default max 15)
+- Outputs include score breakdown and AI explanations (commentary/recommendation)
+- Controlled by env var GROQ_API_KEY.
+
+10) WebSocket / realtime
+- server/websocket.ts currently exports stubs.
+- server/index.ts has WebSocket startup commented out.
+- Practically: notifications/messages likely behave as polling/normal HTTP, unless later re-enabled.
+
+11) “Most useful diagrams” checklist (suggested)
+A) Context diagram (Level 1)
+- External actors: Admin, Employer, Jobseeker/Freelancer
+- External services: Groq API (AI matching), optional OAuth provider (Google)
+- System boundary: GensanWorks
+
+B) Container diagram (Level 2)
+- Browser SPA (React)
+- Node/Express server (API + static)
+- Database (SQLite file or Postgres)
+- External services (Groq, Google OAuth)
+
+C) Component diagram (Level 3: server)
+- Express app
+  - middleware: helmet, json parser, api logger
+  - auth middleware (JWT)
+  - routes controller (server/routes.ts)
+  - storage/data access (server/storage.ts)
+  - database init/migrations (server/database.ts)
+  - ai matcher (server/ai-job-matcher.ts)
+  - upload handler (server/fileUpload.ts)
+
+D) Component diagram (client)
+- Router (Wouter) + role shells
+- Auth context (localStorage JWT)
+- Data access: authFetch + React Query (note: queryClient defaults use credentials include; some calls may use authFetch explicitly)
+- UI layout: sidebar + top navbar
+
+E) Sequence diagrams (recommended)
+- Login:
+  1) UI -> POST /api/auth/login
+  2) server validates + verifies password -> returns {token,user}
+  3) client stores token in localStorage
+  4) subsequent requests include Authorization header
+- Job application:
+  1) jobseeker -> POST /api/jobs/:jobId/apply
+  2) server creates applications row
+  3) employer/admin dashboards read /api/employer/applications or /api/admin/applications
+- AI match job:
+  1) admin -> GET /api/jobs/:jobId/match
+  2) server loads job + candidates -> AIJobMatcher -> Groq (optional)
+  3) returns ranked match list
+- Employer pipeline update:
+  1) employer -> PUT /api/employer/applications/:id (status transition)
+  2) server validates allowed status transitions -> updates application/referral status
+  3) notifications/messages emitted (currently HTTP-based; websocket stub)
+
+12) Key environment variables
+- PORT (default 5000)
+- NODE_ENV (development/production/test)
+- DATABASE_URL (if postgresql://..., uses Postgres; otherwise SQLite)
+- JWT_SECRET (JWT signing)
+- BCRYPT_SALT_ROUNDS
+- GROQ_API_KEY (enables AI matching)
+- GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_CALLBACK_URL (OAuth)
+
+13) Where to look for “truth” when diagramming
+- API truth: server/routes.ts + openapi.yaml
+- Data model truth: server/unified-schema.ts + migrations/*.sql
+- Validation/type truth: shared/schema.ts
+- UI navigation truth: client/src/App.tsx
+
+END

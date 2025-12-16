@@ -11,6 +11,107 @@
 				"$tsc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "Run DB migration for jobsTable archived columns",
+			"type": "shell",
+			"command": "npm run db:push",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "Drop and recreate jobs table (fix NOT NULL error)",
+			"type": "shell",
+			"command": "npm run db:push",
+			"args": [],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "Run DB migration for applications fields",
+			"type": "shell",
+			"command": "npm run db:push",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "Drop and recreate jobs table (fix NOT NULL error)",
+			"type": "shell",
+			"command": "npm run db:push",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "Start Dev Server",
+			"type": "shell",
+			"command": "npm run dev",
+			"isBackground": true,
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated",
+				"focus": false
+			}
+		},
+		{
+			"label": "Start Dev Tunnel",
+			"type": "shell",
+			"command": "${workspaceFolder}/start-tunnel.ps1",
+			"isBackground": true,
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated",
+				"focus": false
+			}
+		},
+		{
+			"label": "Start All (Dev + Tunnel)",
+			"dependsOn": [
+				"Start Dev Server",
+				"Start Dev Tunnel"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Start Fast Tunnel (Prod Build)",
+			"type": "shell",
+			"command": "${workspaceFolder}/start-tunnel-fast.ps1",
+			"args": [
+				"-Build"
+			],
+			"isBackground": true,
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated",
+				"focus": false
+			}
+		},
+		{
+			"label": "Start Fast Tunnel (No Build)",
+			"type": "shell",
+			"command": "${workspaceFolder}/start-tunnel-fast.ps1",
+			"args": [],
+			"isBackground": true,
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated",
+				"focus": false
+			}
+		},
+		{
+			"label": "Start Dev Server (PORT=5001)",
+			"type": "shell",
+			"command": "cross-env PORT=5001 npm run dev",
+			"isBackground": true
+		},
+		{
+			"label": "Start Dev Server (PORT=5001 via env)",
+			"type": "shell",
+			"command": "$env:PORT=5001; npm run dev",
+			"isBackground": true
 		}
 	]
 }

@@ -10,6 +10,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SkillSpecializationInput } from '@/components/skill-specialization-input';
+import { useFieldErrors, type FieldErrors } from '@/lib/field-errors';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +37,95 @@ import {
   X,
 } from 'lucide-react';
 import type { Applicant } from '@shared/schema';
+import {
+  nsrpEmploymentTypes,
+  nsrpEmploymentStatusOptions,
+  nsrpEmployedBranches,
+  nsrpSelfEmploymentCategories,
+  nsrpUnemployedReasons,
+} from '@shared/schema';
+import { EDUCATION_LEVEL_OPTIONS } from '@shared/education';
+import { type ProvinceOption, type MunicipalityOption, type BarangayOption } from '@/lib/locations';
+const employmentStatusChoices = [
+  ...nsrpEmploymentStatusOptions,
+  'Self-employed',
+  'New Entrant/Fresh Graduate',
+  'Finished Contract',
+  'Resigned',
+  'Retired',
+  'Terminated/Laid off',
+  'Terminated/Laid off due to calamity',
+  'Terminated/Laid off (local)',
+  'Terminated/Laid off (abroad)',
+];
+
+const educationLevels = EDUCATION_LEVEL_OPTIONS.filter((level) => level !== 'No specific requirement');
+
+const workExperienceStatusOptions = ['Permanent', 'Contractual', 'Temporary'];
+
+const otherSkillsOptions = [
+  'Auto Mechanic',
+  'Beautician',
+  'Carpentry Work',
+  'Computer Literate',
+  'Domestic Chores',
+  'Driver',
+  'Electrician',
+  'Embroidery',
+  'Gardening',
+  'Masonry',
+  'Painter/Artist',
+  'Painting Jobs',
+  'Photography',
+  'Plumbing',
+  'Sewing Dresses',
+  'Stenography',
+  'Tailoring',
+  'Others',
+] as const;
+
+const adminBarangays = [
+  'Apopong',
+  'Baluan',
+  'Batomelong',
+  'Buayan',
+  'Bula',
+  'Calumpang',
+  'City Heights',
+  'Conel',
+  'Dadiangas East',
+  'Dadiangas North',
+  'Dadiangas South',
+  'Dadiangas West',
+  'Fatima',
+  'Katangawan',
+  'Labangal',
+  'Lagao',
+  'Ligaya',
+  'Mabuhay',
+  'Olympog',
+  'San Isidro',
+  'San Jose',
+  'Siguel',
+  'Sinawal',
+  'Tambler',
+  'Tinagacan',
+  'Upper Labay',
+];
+
+const adminLocationOptions: ProvinceOption[] = [
+  {
+    code: 'SC',
+    name: 'South Cotabato',
+    municipalities: [
+      {
+        code: 'GENSAN',
+        name: 'General Santos City',
+        barangays: adminBarangays.map((b) => ({ code: b, name: b })),
+      },
+    ],
+  },
+];
 
 export default function JobseekerProfilePage() {
   const { user } = useAuth();
@@ -43,10 +134,56 @@ export default function JobseekerProfilePage() {
   const [loading, setLoading] = useState(true);
   const [profileData, setProfileData] = useState<Applicant | null>(null);
   const [formData, setFormData] = useState<Partial<Applicant>>({});
+  const [provinceOptions, setProvinceOptions] = useState<ProvinceOption[]>(adminLocationOptions);
+  const [municipalityOptions, setMunicipalityOptions] = useState<MunicipalityOption[]>([]);
+  const [barangayOptions, setBarangayOptions] = useState<BarangayOption[]>([]);
+
+  type AddressField = 'houseStreetVillage' | 'barangay' | 'municipality' | 'province';
+  const { fieldErrors, clearFieldError, setErrorsAndFocus, setFieldErrors } = useFieldErrors<AddressField>();
+
+  useEffect(() => {
+    if (loading) return;
+    const hasProvince = Boolean(formData.province?.trim());
+    if (!hasProvince && adminLocationOptions.length) {
+      const defaultProvince = adminLocationOptions[0];
+      const defaultMunicipality = defaultProvince.municipalities[0];
+      setFormData((prev) => ({
+        ...prev,
+        province: defaultProvince.name,
+        municipality: defaultMunicipality?.name || prev.municipality,
+      }));
+    }
+  }, [loading, formData.province]);
 
   useEffect(() => {
     fetchProfileData();
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!provinceOptions.length) {
+      setMunicipalityOptions([]);
+      setBarangayOptions([]);
+      return;
+    }
+
+    const province = provinceOptions.find((p) => p.name === formData.province);
+    const municipalities = province?.municipalities || [];
+    setMunicipalityOptions(municipalities);
+
+    if (formData.municipality && !municipalities.some((m) => m.name === formData.municipality)) {
+      setFormData((prev) => ({ ...prev, municipality: '', barangay: '' }));
+    }
+  }, [provinceOptions, formData.province, formData.municipality]);
+
+  useEffect(() => {
+    const municipality = municipalityOptions.find((m) => m.name === formData.municipality);
+    const brgys = municipality?.barangays || [];
+    setBarangayOptions(brgys);
+
+    if (formData.barangay && !brgys.some((b) => b.name === formData.barangay)) {
+      setFormData((prev) => ({ ...prev, barangay: '' }));
+    }
+  }, [municipalityOptions, formData.municipality, formData.barangay]);
 
   const fetchProfileData = async () => {
     if (!user?.id) {
@@ -59,7 +196,7 @@ export default function JobseekerProfilePage() {
       setLoading(true);
       console.log('Fetching profile for user:', user.id);
       
-      const res = await authFetch(`/api/applicants/${user.id}`);
+      const res = await authFetch(`/api/applicants/${user.id}?view=profile`);
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: 'Failed to fetch profile' }));
@@ -68,8 +205,31 @@ export default function JobseekerProfilePage() {
       
       const data = await res.json();
       console.log('Profile data fetched:', data);
-      setProfileData(data);
-      setFormData(data);
+
+      const normalizedSex = data.sex === 'Male' || data.sex === 'Female' ? data.sex : 'Male';
+      
+      // Normalize date fields: convert ISO strings to YYYY-MM-DD format for date inputs
+      const normalizeDate = (dateValue: any): string => {
+        if (!dateValue) return '';
+        try {
+          const date = new Date(dateValue);
+          if (isNaN(date.getTime())) return '';
+          // Extract YYYY-MM-DD from ISO string
+          return date.toISOString().split('T')[0];
+        } catch {
+          return '';
+        }
+      };
+
+      const normalizedData = {
+        ...data,
+        sex: normalizedSex,
+        dateOfBirth: normalizeDate(data.dateOfBirth),
+        returnToPHDate: normalizeDate(data.returnToPHDate),
+      };
+
+      setProfileData(normalizedData);
+      setFormData(normalizedData);
     } catch (error: any) {
       console.error('Error fetching profile:', error);
       toast({
@@ -82,16 +242,68 @@ export default function JobseekerProfilePage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.SyntheticEvent) => {
+    e?.preventDefault();
+
+    if (!user?.id) {
+      toast({
+        title: 'Error',
+        description: 'You must be logged in to update your profile.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const requiredAddress = [
+      { key: 'houseStreetVillage', label: 'House/Street/Village' },
+      { key: 'barangay', label: 'Barangay' },
+      { key: 'municipality', label: 'Municipality/City' },
+      { key: 'province', label: 'Province' },
+    ] as const;
+
+    const nextErrors: FieldErrors<AddressField> = {};
+    for (const { key, label } of requiredAddress) {
+      if (!String((formData as any)[key] || '').trim()) {
+        nextErrors[key] = `${label} is required`;
+      }
+    }
+
+    if (Object.keys(nextErrors).length) {
+      setErrorsAndFocus(nextErrors);
+      return;
+    }
 
     try {
-      console.log('Updating profile with data:', formData);
+      const stripNullish = (value: any): any => {
+        if (value === null || value === undefined) return undefined;
+        if (Array.isArray(value)) {
+          return value
+            .map(stripNullish)
+            .filter((v) => v !== undefined);
+        }
+        if (typeof value === 'object') {
+          const out: Record<string, any> = {};
+          for (const [k, v] of Object.entries(value)) {
+            const cleaned = stripNullish(v);
+            if (cleaned === undefined) continue;
+            out[k] = cleaned;
+          }
+          return out;
+        }
+        return value;
+      };
+
+      const cleanedFormData = stripNullish(formData) as Partial<Applicant>;
+
+      console.log('Updating profile with data:', cleanedFormData);
       
-      const res = await authFetch(`/api/applicants/${user?.id}`, {
+      const res = await authFetch(`/api/applicants/${user.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...cleanedFormData,
+          sex: cleanedFormData.sex === 'Female' ? 'Female' : 'Male',
+        }),
       });
 
       if (!res.ok) {
@@ -118,6 +330,112 @@ export default function JobseekerProfilePage() {
 
   const handleInputChange = (field: keyof Applicant, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+
+    if (
+      field === 'houseStreetVillage' ||
+      field === 'barangay' ||
+      field === 'municipality' ||
+      field === 'province'
+    ) {
+      clearFieldError(field as AddressField);
+    }
+  };
+
+  const handleProvinceChange = (value: string) => {
+    setFormData(prev => ({ ...prev, province: value, municipality: '', barangay: '' }));
+    clearFieldError('province');
+    clearFieldError('municipality');
+    clearFieldError('barangay');
+  };
+
+  const handleMunicipalityChange = (value: string) => {
+    setFormData(prev => ({ ...prev, municipality: value, barangay: '' }));
+    clearFieldError('municipality');
+    clearFieldError('barangay');
+  };
+
+  const syncEmploymentType = (
+    detail?: string | null,
+    category?: string | null,
+    categoryOther?: string | null,
+  ) => {
+    if (detail === 'Self-employed') {
+      if (category === 'Others') {
+        handleInputChange('employmentType', categoryOther || 'Others');
+      } else if (category) {
+        handleInputChange('employmentType', category as Applicant['employmentType']);
+      } else {
+        handleInputChange('employmentType', 'Self-employed');
+      }
+      return;
+    }
+
+    if (detail === 'Wage employed') {
+      handleInputChange('employmentType', 'Wage employed');
+      return;
+    }
+
+    handleInputChange('employmentType', undefined);
+  };
+
+  const resetEmploymentDetailFields = () => {
+    handleInputChange('employmentStatusDetail', undefined);
+    handleInputChange('selfEmployedCategory', undefined);
+    handleInputChange('selfEmployedCategoryOther', '');
+  };
+
+  const resetUnemploymentFields = () => {
+    handleInputChange('unemployedReason', undefined);
+    handleInputChange('unemployedReasonOther', '');
+    handleInputChange('unemployedAbroadCountry', '');
+    handleInputChange('monthsUnemployed', undefined);
+  };
+
+  const handleEmploymentStatusChange = (value: Applicant['employmentStatus']) => {
+    handleInputChange('employmentStatus', value);
+    if (value === 'Employed') {
+      resetUnemploymentFields();
+    } else if (value === 'Unemployed') {
+      resetEmploymentDetailFields();
+      handleInputChange('employmentType', undefined);
+    }
+  };
+
+  const handleEmploymentStatusDetailChange = (value: Applicant['employmentStatusDetail']) => {
+    handleInputChange('employmentStatusDetail', value);
+    if (value !== 'Self-employed') {
+      handleInputChange('selfEmployedCategory', undefined);
+      handleInputChange('selfEmployedCategoryOther', '');
+    }
+    syncEmploymentType(value, formData.selfEmployedCategory, formData.selfEmployedCategoryOther);
+  };
+
+  const handleSelfEmployedCategoryChange = (value: Applicant['selfEmployedCategory']) => {
+    handleInputChange('selfEmployedCategory', value);
+    if (value !== 'Others') {
+      handleInputChange('selfEmployedCategoryOther', '');
+    }
+    syncEmploymentType(formData.employmentStatusDetail, value, formData.selfEmployedCategoryOther);
+  };
+
+  const handleUnemployedReasonChange = (value: Applicant['unemployedReason']) => {
+    handleInputChange('unemployedReason', value);
+    if (value !== 'Terminated/Laid off (abroad)') {
+      handleInputChange('unemployedAbroadCountry', '');
+    }
+    if (value !== 'Others') {
+      handleInputChange('unemployedReasonOther', '');
+    }
+  };
+
+
+  const handleOtherSkillToggle = (skill: typeof otherSkillsOptions[number]) => {
+    setFormData(prev => {
+      const skills = (prev.otherSkills || []) as typeof otherSkillsOptions[number][];
+      const exists = skills.includes(skill);
+      const next = exists ? skills.filter((s) => s !== skill) : [...skills, skill];
+      return { ...prev, otherSkills: next };
+    });
   };
 
   // Helpers for editing array fields in formData
@@ -168,202 +486,349 @@ export default function JobseekerProfilePage() {
     );
   }
 
-  return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">My NSRP Profile</h1>
-          <p className="text-slate-600 mt-1">National Service and Referral Program Registration</p>
-        </div>
-        {!isEditing ? (
-          <Button onClick={() => setIsEditing(true)} className="bg-purple-600 hover:bg-purple-700">
-            <Edit3 className="w-4 h-4 mr-2" />
-            Edit Profile
-          </Button>
-        ) : (
-          <div className="flex gap-2">
-            <Button onClick={handleSubmit} className="bg-green-600 hover:bg-green-700">
-              <Save className="w-4 h-4 mr-2" />
-              Save Changes
-            </Button>
-            <Button onClick={() => { setIsEditing(false); setFormData(profileData); }} variant="outline">
-              <X className="w-4 h-4 mr-2" />
-              Cancel
-            </Button>
-          </div>
-        )}
-      </div>
+  const sectionCardClass = "bg-white rounded-2xl border border-slate-100 shadow-sm";
+  const sectionHeaderClass = "border-b border-slate-100";
 
-      <Tabs defaultValue="personal" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-7 lg:w-auto lg:inline-grid">
-          <TabsTrigger value="personal" className="flex items-center gap-2">
-            <User className="w-4 h-4" />
-            Personal
-          </TabsTrigger>
-          <TabsTrigger value="address" className="flex items-center gap-2">
-            <MapPin className="w-4 h-4" />
-            Address
-          </TabsTrigger>
-          <TabsTrigger value="employment" className="flex items-center gap-2">
-            <Briefcase className="w-4 h-4" />
-            Employment
-          </TabsTrigger>
-          <TabsTrigger value="education" className="flex items-center gap-2">
-            <GraduationCap className="w-4 h-4" />
-            Education
-          </TabsTrigger>
-          <TabsTrigger value="experience" className="flex items-center gap-2">
-            <Building2 className="w-4 h-4" />
-            Experience
-          </TabsTrigger>
-          <TabsTrigger value="skills" className="flex items-center gap-2">
-            <Award className="w-4 h-4" />
-            Skills
-          </TabsTrigger>
-          <TabsTrigger value="preferences" className="flex items-center gap-2">
-            <Settings className="w-4 h-4" />
-            Preferences
-          </TabsTrigger>
-        </TabsList>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-slate-50 py-8 px-4">
+      <div className="mx-auto max-w-6xl flex flex-col lg:flex-row gap-6">
+        {/* Profile Card Left */}
+        <aside className="w-full lg:w-72 bg-white rounded-3xl shadow-xl p-6 space-y-6 border border-blue-100 flex flex-col items-center text-center">
+          <div className="relative">
+            <img
+              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.id}`}
+              alt="Profile"
+              className="w-28 h-28 rounded-2xl object-cover shadow-lg"
+            />
+            <button
+              className="absolute bottom-0 right-0 bg-blue-600 text-white rounded-full p-2 shadow-lg"
+              onClick={() => {}}
+              title="Edit profile image"
+            >
+              <Edit3 className="w-4 h-4" />
+            </button>
+          </div>
+          <h2 className="text-xl font-semibold text-slate-900 mt-4">{user?.name || "Jobseeker"}</h2>
+          <p className="text-sm text-slate-500">{user?.role === "freelancer" ? "Freelancer" : "Jobseeker"}</p>
+          <div className="mt-2 flex flex-col items-center gap-2">
+            <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">NSRP Profile</Badge>
+            <p className="text-xs text-slate-500">Keep your details updated for better matching and referrals.</p>
+          </div>
+        </aside>
+
+        {/* Main Info Card Right */}
+        <section className="flex-1">
+          <div className="bg-white rounded-3xl shadow-xl border border-slate-100 p-6 space-y-6">
+            <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <p className="text-sm uppercase tracking-wide text-blue-500">Profile Overview</p>
+                <p className="text-3xl font-semibold text-slate-900">NSRP Profile</p>
+                <p className="text-slate-500 text-sm">Update your personal information, address, and work details.</p>
+              </div>
+              <div className="flex gap-2">
+                {!isEditing ? (
+                  <Button onClick={() => setIsEditing(true)} className="bg-blue-600 hover:bg-blue-700 border-0 shadow-md">
+                    <Edit3 className="w-4 h-4 mr-2" />Edit Profile
+                  </Button>
+                ) : (
+                  <>
+                    <Button onClick={handleSubmit} className="bg-blue-600 hover:bg-blue-700 border-0 shadow-md">
+                      <Save className="w-4 h-4 mr-2" />Save
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setIsEditing(false);
+                        setFormData(profileData);
+                      }}
+                      variant="outline"
+                    >
+                      <X className="w-4 h-4 mr-2" />Cancel
+                    </Button>
+                  </>
+                )}
+              </div>
+            </header>
+
+            <Tabs defaultValue="personal" className="space-y-6">
+              <TabsList className="mb-4 grid grid-cols-5 gap-2">
+                <TabsTrigger value="personal">Personal</TabsTrigger>
+                <TabsTrigger value="address">Address</TabsTrigger>
+                <TabsTrigger value="employment">Employment</TabsTrigger>
+                <TabsTrigger value="industry">Industry</TabsTrigger>
+                <TabsTrigger value="documents">Documents</TabsTrigger>
+              </TabsList>
 
         {/* Personal Information Tab */}
         <TabsContent value="personal">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="w-5 h-5" />
-                I. Personal Information
-              </CardTitle>
-              <CardDescription>Your basic personal details from NSRP registration form</CardDescription>
+          <Card className={sectionCardClass}>
+            <CardHeader className={sectionHeaderClass}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-3 text-2xl">
+                    <div className="rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 p-2.5 text-white shadow-lg">
+                      <User className="w-5 h-5" />
+                    </div>
+                    Personal Information
+                  </CardTitle>
+                  <CardDescription className="mt-2 text-slate-600 dark:text-slate-300">Your basic personal details from NSRP registration form</CardDescription>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="pt-8 space-y-8">
               {isEditing ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div>
-                    <Label>Surname *</Label>
-                    <Input
-                      value={formData.surname || ''}
-                      onChange={(e) => handleInputChange('surname', e.target.value)}
-                      placeholder="Last name"
-                    />
+                <div className="space-y-6">
+                  <div className="rounded-2xl bg-gradient-to-br from-slate-50 to-blue-50/30 p-6 dark:from-white/5 dark:to-blue-500/5">
+                    <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">Name Details</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+                      <div>
+                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Surname *</Label>
+                        <Input
+                          value={formData.surname || ''}
+                          onChange={(e) => handleInputChange('surname', e.target.value)}
+                          placeholder="Last name"
+                          className="mt-1.5 border-slate-200 bg-white/50 shadow-sm transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/10 dark:bg-white/5"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">First Name *</Label>
+                        <Input
+                          value={formData.firstName || ''}
+                          onChange={(e) => handleInputChange('firstName', e.target.value)}
+                          placeholder="First name"
+                          className="mt-1.5 border-slate-200 bg-white/50 shadow-sm transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/10 dark:bg-white/5"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Middle Name</Label>
+                        <Input
+                          value={formData.middleName || ''}
+                          onChange={(e) => handleInputChange('middleName', e.target.value)}
+                          placeholder="Middle name"
+                          className="mt-1.5 border-slate-200 bg-white/50 shadow-sm transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/10 dark:bg-white/5"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Suffix</Label>
+                        <Input
+                          value={formData.suffix || ''}
+                          onChange={(e) => handleInputChange('suffix', e.target.value)}
+                          placeholder="Jr., Sr., III"
+                          className="mt-1.5 border-slate-200 bg-white/50 shadow-sm transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/10 dark:bg-white/5"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <Label>First Name *</Label>
-                    <Input
-                      value={formData.firstName || ''}
-                      onChange={(e) => handleInputChange('firstName', e.target.value)}
-                      placeholder="First name"
-                    />
+
+                  <div className="rounded-2xl bg-gradient-to-br from-slate-50 to-purple-50/30 p-6 dark:from-white/5 dark:to-purple-500/5">
+                    <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">Basic Information</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                      <div>
+                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Date of Birth *</Label>
+                        <Input
+                          type="date"
+                          value={formData.dateOfBirth || ''}
+                          onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
+                          className="mt-1.5 border-slate-200 bg-white/50 shadow-sm transition-all focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 dark:border-white/10 dark:bg-white/5"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Sex</Label>
+                        <select
+                          value={formData.sex || 'Male'}
+                          onChange={(e) => handleInputChange('sex', e.target.value)}
+                          className="mt-1.5 w-full px-3 py-2 border border-slate-200 bg-white/50 rounded-lg shadow-sm transition-all focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 dark:border-white/10 dark:bg-white/5"
+                        >
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                        </select>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Civil Status</Label>
+                        <select
+                          value={formData.civilStatus || 'Single'}
+                          onChange={(e) => handleInputChange('civilStatus', e.target.value)}
+                          className="mt-1.5 w-full px-3 py-2 border border-slate-200 bg-white/50 rounded-lg shadow-sm transition-all focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 dark:border-white/10 dark:bg-white/5"
+                        >
+                          <option value="Single">Single</option>
+                          <option value="Married">Married</option>
+                          <option value="Widowed">Widowed</option>
+                        </select>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Height</Label>
+                        <Input
+                          value={formData.height || ''}
+                          onChange={(e) => handleInputChange('height', e.target.value)}
+                          placeholder="e.g., 5'6"
+                          className="mt-1.5 border-slate-200 bg-white/50 shadow-sm transition-all focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 dark:border-white/10 dark:bg-white/5"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Religion</Label>
+                        <Input
+                          value={formData.religion || ''}
+                          onChange={(e) => handleInputChange('religion', e.target.value)}
+                          placeholder="Your religion"
+                          className="mt-1.5 border-slate-200 bg-white/50 shadow-sm transition-all focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 dark:border-white/10 dark:bg-white/5"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Disability Status</Label>
+                        <select
+                          value={formData.disability || 'None'}
+                          onChange={(e) => handleInputChange('disability', e.target.value)}
+                          className="mt-1.5 w-full px-3 py-2 border border-slate-200 bg-white/50 rounded-lg shadow-sm transition-all focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 dark:border-white/10 dark:bg-white/5"
+                        >
+                          <option value="None">None</option>
+                          <option value="Visual">Visual</option>
+                          <option value="Hearing">Hearing</option>
+                          <option value="Speech">Speech</option>
+                          <option value="Physical">Physical</option>
+                          <option value="Mental">Mental</option>
+                          <option value="Others">Others</option>
+                        </select>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <Label>Middle Name</Label>
-                    <Input
-                      value={formData.middleName || ''}
-                      onChange={(e) => handleInputChange('middleName', e.target.value)}
-                      placeholder="Middle name"
-                    />
-                  </div>
-                  <div>
-                    <Label>Suffix</Label>
-                    <Input
-                      value={formData.suffix || ''}
-                      onChange={(e) => handleInputChange('suffix', e.target.value)}
-                      placeholder="Jr., Sr., III"
-                    />
-                  </div>
-                  <div>
-                    <Label>Date of Birth *</Label>
-                    <Input
-                      type="date"
-                      value={formData.dateOfBirth || ''}
-                      onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label>Sex</Label>
-                    <select
-                      value={formData.sex || 'Male'}
-                      onChange={(e) => handleInputChange('sex', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                    >
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                    </select>
-                  </div>
-                  <div>
-                    <Label>Civil Status</Label>
-                    <select
-                      value={formData.civilStatus || 'Single'}
-                      onChange={(e) => handleInputChange('civilStatus', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                    >
-                      <option value="Single">Single</option>
-                      <option value="Married">Married</option>
-                      <option value="Widowed">Widowed</option>
-                    </select>
-                  </div>
-                  <div>
-                    <Label>Height</Label>
-                    <Input
-                      value={formData.height || ''}
-                      onChange={(e) => handleInputChange('height', e.target.value)}
-                      placeholder="e.g., 5'6"
-                    />
-                  </div>
-                  <div>
-                    <Label>Religion</Label>
-                    <Input
-                      value={formData.religion || ''}
-                      onChange={(e) => handleInputChange('religion', e.target.value)}
-                      placeholder="Your religion"
-                    />
-                  </div>
-                  <div>
-                    <Label>Contact Number</Label>
-                    <Input
-                      value={formData.contactNumber || ''}
-                      onChange={(e) => handleInputChange('contactNumber', e.target.value)}
-                      placeholder="09XX XXX XXXX"
-                    />
-                  </div>
-                  <div>
-                    <Label>Email Address</Label>
-                    <Input
-                      type="email"
-                      value={formData.email || ''}
-                      onChange={(e) => handleInputChange('email', e.target.value)}
-                      placeholder="your.email@example.com"
-                    />
-                  </div>
-                  <div>
-                    <Label>Disability</Label>
-                    <select
-                      value={formData.disability || 'None'}
-                      onChange={(e) => handleInputChange('disability', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                    >
-                      <option value="None">None</option>
-                      <option value="Visual">Visual</option>
-                      <option value="Hearing">Hearing</option>
-                      <option value="Speech">Speech</option>
-                      <option value="Physical">Physical</option>
-                      <option value="Mental">Mental</option>
-                      <option value="Others">Others</option>
-                    </select>
+
+                  <div className="rounded-2xl bg-gradient-to-br from-slate-50 to-emerald-50/30 p-6 dark:from-white/5 dark:to-emerald-500/5">
+                    <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">Contact Information</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div>
+                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Contact Number</Label>
+                        <Input
+                          value={formData.contactNumber || ''}
+                          onChange={(e) => handleInputChange('contactNumber', e.target.value)}
+                          placeholder="09XX XXX XXXX"
+                          className="mt-1.5 border-slate-200 bg-white/50 shadow-sm transition-all focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-white/10 dark:bg-white/5"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Email Address</Label>
+                        <Input
+                          type="email"
+                          value={formData.email || ''}
+                          disabled
+                          placeholder="your.email@example.com"
+                          className="mt-1.5 border-slate-200 bg-white/50 shadow-sm transition-all focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-white/10 dark:bg-white/5"
+                        />
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Email cannot be changed here.</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  <InfoField icon={User} label="Full Name" value={`${profileData.firstName} ${profileData.middleName || ''} ${profileData.surname} ${profileData.suffix || ''}`.trim()} />
-                  <InfoField icon={Calendar} label="Date of Birth" value={profileData.dateOfBirth ? new Date(profileData.dateOfBirth).toLocaleDateString() : 'Not specified'} />
-                  <InfoField icon={User} label="Sex" value={profileData.sex} />
-                  <InfoField icon={Heart} label="Civil Status" value={profileData.civilStatus} />
-                  <InfoField icon={User} label="Height" value={profileData.height || 'Not specified'} />
-                  <InfoField icon={Heart} label="Religion" value={profileData.religion || 'Not specified'} />
-                  <InfoField icon={Phone} label="Contact Number" value={profileData.contactNumber || 'Not specified'} />
-                  <InfoField icon={Mail} label="Email" value={profileData.email || 'Not specified'} />
-                  <InfoField icon={User} label="Disability" value={profileData.disability || 'None'} />
+                <div className="space-y-6">
+                  <div className="rounded-2xl bg-gradient-to-br from-blue-50/50 to-indigo-50/30 p-6 dark:from-blue-500/5 dark:to-indigo-500/5">
+                    <h3 className="mb-5 text-sm font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">Personal Details</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                      <div className="group">
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-lg bg-blue-500/10 p-2 transition-transform group-hover:scale-110">
+                            <User className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Full Name</p>
+                            <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">{`${profileData.firstName} ${profileData.middleName || ''} ${profileData.surname} ${profileData.suffix || ''}`.trim()}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="group">
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-lg bg-purple-500/10 p-2 transition-transform group-hover:scale-110">
+                            <Calendar className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Date of Birth</p>
+                            <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">{profileData.dateOfBirth ? new Date(profileData.dateOfBirth).toLocaleDateString() : 'Not specified'}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="group">
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-lg bg-pink-500/10 p-2 transition-transform group-hover:scale-110">
+                            <User className="w-4 h-4 text-pink-600 dark:text-pink-400" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Sex</p>
+                            <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">{profileData.sex}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="group">
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-lg bg-rose-500/10 p-2 transition-transform group-hover:scale-110">
+                            <Heart className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Civil Status</p>
+                            <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">{profileData.civilStatus}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="group">
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-lg bg-indigo-500/10 p-2 transition-transform group-hover:scale-110">
+                            <User className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Height</p>
+                            <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">{profileData.height || 'Not specified'}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="group">
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-lg bg-violet-500/10 p-2 transition-transform group-hover:scale-110">
+                            <Heart className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Religion</p>
+                            <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">{profileData.religion || 'Not specified'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-gradient-to-br from-emerald-50/50 to-teal-50/30 p-6 dark:from-emerald-500/5 dark:to-teal-500/5">
+                    <h3 className="mb-5 text-sm font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">Contact Information</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div className="group">
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-lg bg-emerald-500/10 p-2 transition-transform group-hover:scale-110">
+                            <Phone className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Contact Number</p>
+                            <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">{profileData.contactNumber || 'Not specified'}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="group">
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-lg bg-teal-500/10 p-2 transition-transform group-hover:scale-110">
+                            <Mail className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Email</p>
+                            <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">{profileData.email || 'Not specified'}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="group md:col-span-2">
+                        <div className="flex items-center gap-3">
+                          <div className="rounded-lg bg-amber-500/10 p-2 transition-transform group-hover:scale-110">
+                            <User className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Disability Status</p>
+                            <p className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">{profileData.disability || 'None'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -372,53 +837,144 @@ export default function JobseekerProfilePage() {
 
         {/* Address Tab */}
         <TabsContent value="address">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin className="w-5 h-5" />
-                II. Address Information
+          <Card className={sectionCardClass}>
+            <CardHeader className={sectionHeaderClass}>
+              <CardTitle className="flex items-center gap-3 text-2xl">
+                <div className="rounded-xl bg-gradient-to-br from-orange-500 to-red-600 p-2.5 text-white shadow-lg">
+                  <MapPin className="w-5 h-5" />
+                </div>
+                Address Information
               </CardTitle>
-              <CardDescription>Your residential address</CardDescription>
+              <CardDescription className="text-base">Your residential address (Part of I. Personal Information)</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {isEditing ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="md:col-span-2">
-                    <Label>House/Street/Village *</Label>
-                    <Input
-                      value={formData.houseStreetVillage || ''}
-                      onChange={(e) => handleInputChange('houseStreetVillage', e.target.value)}
-                      placeholder="Complete address"
-                    />
-                  </div>
-                  <div>
-                    <Label>Barangay *</Label>
-                    <Input
-                      value={formData.barangay || ''}
-                      onChange={(e) => handleInputChange('barangay', e.target.value)}
-                      placeholder="Barangay"
-                    />
-                  </div>
-                  <div>
-                    <Label>Municipality/City *</Label>
-                    <Input
-                      value={formData.municipality || ''}
-                      onChange={(e) => handleInputChange('municipality', e.target.value)}
-                      placeholder="Municipality or City"
-                    />
-                  </div>
-                  <div>
-                    <Label>Province *</Label>
-                    <Input
-                      value={formData.province || ''}
-                      onChange={(e) => handleInputChange('province', e.target.value)}
-                      placeholder="Province"
-                    />
+                <div className="rounded-2xl bg-gradient-to-br from-orange-50/50 to-red-50/30 p-6 dark:from-orange-500/5 dark:to-red-500/5">
+                  <h3 className="mb-5 text-sm font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">Residential Address</h3>
+                  <div className="space-y-5">
+                    <div>
+                      <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">House/Street/Village *</Label>
+                      <Input
+                        aria-invalid={!!fieldErrors.houseStreetVillage}
+                        value={formData.houseStreetVillage || ''}
+                        onChange={(e) => handleInputChange('houseStreetVillage', e.target.value)}
+                        placeholder="Complete address"
+                        className="mt-1.5 border-slate-200 bg-white/50 shadow-sm transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 aria-[invalid=true]:border-destructive aria-[invalid=true]:focus:border-destructive aria-[invalid=true]:focus:ring-2 aria-[invalid=true]:focus:ring-destructive/20 dark:border-white/10 dark:bg-white/5"
+                      />
+                      {fieldErrors.houseStreetVillage && (
+                        <p className="mt-1 text-xs text-destructive">{fieldErrors.houseStreetVillage}</p>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                      <div>
+                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Province *</Label>
+                        {provinceOptions.length ? (
+                          <select
+                            aria-invalid={!!fieldErrors.province}
+                            value={formData.province || ''}
+                            onChange={(e) => handleProvinceChange(e.target.value)}
+                            className="mt-1.5 w-full px-3 py-2 border border-slate-200 bg-white/50 rounded-lg shadow-sm transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 aria-[invalid=true]:border-destructive aria-[invalid=true]:focus:border-destructive aria-[invalid=true]:focus:ring-2 aria-[invalid=true]:focus:ring-destructive/20 dark:border-white/10 dark:bg-white/5"
+                          >
+                            <option value="">Select province</option>
+                            {provinceOptions.map((province) => (
+                              <option key={province.code} value={province.name}>{province.name}</option>
+                            ))}
+                            {formData.province && !provinceOptions.some((p) => p.name === formData.province) && (
+                              <option value={formData.province}>{`Keep current: ${formData.province}`}</option>
+                            )}
+                          </select>
+                        ) : (
+                          <Input
+                            aria-invalid={!!fieldErrors.province}
+                            value={formData.province || ''}
+                            onChange={(e) => handleProvinceChange(e.target.value)}
+                            placeholder="Enter province"
+                            className="mt-1.5 border-slate-200 bg-white/50 shadow-sm transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 aria-[invalid=true]:border-destructive aria-[invalid=true]:focus:border-destructive aria-[invalid=true]:focus:ring-2 aria-[invalid=true]:focus:ring-destructive/20 dark:border-white/10 dark:bg-white/5"
+                          />
+                        )}
+                        {fieldErrors.province && <p className="mt-1 text-xs text-destructive">{fieldErrors.province}</p>}
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Municipality/City *</Label>
+                        {municipalityOptions.length ? (
+                          <select
+                            aria-invalid={!!fieldErrors.municipality}
+                            value={formData.municipality || ''}
+                            onChange={(e) => handleMunicipalityChange(e.target.value)}
+                            className="mt-1.5 w-full px-3 py-2 border border-slate-200 bg-white/50 rounded-lg shadow-sm transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 aria-[invalid=true]:border-destructive aria-[invalid=true]:focus:border-destructive aria-[invalid=true]:focus:ring-2 aria-[invalid=true]:focus:ring-destructive/20 dark:border-white/10 dark:bg-white/5"
+                            disabled={!formData.province}
+                          >
+                            <option value="">Select municipality/city</option>
+                            {municipalityOptions.map((muni) => (
+                              <option key={muni.code} value={muni.name}>{muni.name}</option>
+                            ))}
+                            {formData.municipality && !municipalityOptions.some((m) => m.name === formData.municipality) && (
+                              <option value={formData.municipality}>{`Keep current: ${formData.municipality}`}</option>
+                            )}
+                          </select>
+                        ) : (
+                          <Input
+                            aria-invalid={!!fieldErrors.municipality}
+                            value={formData.municipality || ''}
+                            onChange={(e) => handleMunicipalityChange(e.target.value)}
+                            placeholder="Enter municipality or city"
+                            className="mt-1.5 border-slate-200 bg-white/50 shadow-sm transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 aria-[invalid=true]:border-destructive aria-[invalid=true]:focus:border-destructive aria-[invalid=true]:focus:ring-2 aria-[invalid=true]:focus:ring-destructive/20 dark:border-white/10 dark:bg-white/5"
+                          />
+                        )}
+                        {fieldErrors.municipality && (
+                          <p className="mt-1 text-xs text-destructive">{fieldErrors.municipality}</p>
+                        )}
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Barangay *</Label>
+                        {barangayOptions.length ? (
+                          <select
+                            aria-invalid={!!fieldErrors.barangay}
+                            value={formData.barangay || ''}
+                            onChange={(e) => handleInputChange('barangay', e.target.value)}
+                            className="mt-1.5 w-full px-3 py-2 border border-slate-200 bg-white/50 rounded-lg shadow-sm transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 aria-[invalid=true]:border-destructive aria-[invalid=true]:focus:border-destructive aria-[invalid=true]:focus:ring-2 aria-[invalid=true]:focus:ring-destructive/20 dark:border-white/10 dark:bg-white/5"
+                            disabled={!formData.municipality}
+                          >
+                            <option value="">Select barangay</option>
+                            {barangayOptions.map((barangay) => (
+                              <option key={barangay.code} value={barangay.name}>{barangay.name}</option>
+                            ))}
+                            {formData.barangay && !barangayOptions.some((b) => b.name === formData.barangay) && (
+                              <option value={formData.barangay}>{`Keep current: ${formData.barangay}`}</option>
+                            )}
+                          </select>
+                        ) : (
+                          <Input
+                            aria-invalid={!!fieldErrors.barangay}
+                            value={formData.barangay || ''}
+                            onChange={(e) => handleInputChange('barangay', e.target.value)}
+                            placeholder="Enter barangay"
+                            className="mt-1.5 border-slate-200 bg-white/50 shadow-sm transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 aria-[invalid=true]:border-destructive aria-[invalid=true]:focus:border-destructive aria-[invalid=true]:focus:ring-2 aria-[invalid=true]:focus:ring-destructive/20 dark:border-white/10 dark:bg-white/5"
+                          />
+                        )}
+                        {fieldErrors.barangay && <p className="mt-1 text-xs text-destructive">{fieldErrors.barangay}</p>}
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <InfoField icon={MapPin} label="Complete Address" value={`${profileData.houseStreetVillage}, ${profileData.barangay}, ${profileData.municipality}, ${profileData.province}`} />
+                <div className="rounded-2xl bg-gradient-to-br from-orange-50/50 to-red-50/30 p-6 dark:from-orange-500/5 dark:to-red-500/5">
+                  <h3 className="mb-5 text-sm font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">Residential Address</h3>
+                  <div className="group">
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-lg bg-orange-500/10 p-2 transition-transform group-hover:scale-110">
+                        <MapPin className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Complete Address</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-white leading-relaxed">
+                          {profileData.houseStreetVillage}<br />
+                          {profileData.barangay}, {profileData.municipality}<br />
+                          {profileData.province}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -427,13 +983,15 @@ export default function JobseekerProfilePage() {
 
         {/* Employment Status Tab */}
         <TabsContent value="employment">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Briefcase className="w-5 h-5" />
-                III. Employment Status & Preferences
+          <Card className={sectionCardClass}>
+            <CardHeader className={sectionHeaderClass}>
+              <CardTitle className="flex items-center gap-3 text-2xl">
+                <div className="rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 p-2.5 text-white shadow-lg">
+                  <Briefcase className="w-5 h-5" />
+                </div>
+                Employment Status
               </CardTitle>
-              <CardDescription>Your current employment status and job preferences</CardDescription>
+              <CardDescription className="text-base">Your current employment status (OFW, 4Ps, etc.)</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {!isEditing ? (
@@ -444,133 +1002,253 @@ export default function JobseekerProfilePage() {
                   <InfoField icon={Globe} label="Former OFW" value={profileData.isFormerOFW ? `Yes - ${profileData.formerOFWCountry || 'N/A'}` : 'No'} />
                   <InfoField icon={CheckCircle2} label="4Ps Beneficiary" value={profileData.is4PSBeneficiary ? `Yes - ID: ${profileData.householdID || 'N/A'}` : 'No'} />
                   <InfoField icon={Calendar} label="Months Unemployed" value={profileData.monthsUnemployed?.toString() || 'N/A'} />
+                  {profileData.unemployedReason && (
+                    <InfoField icon={Briefcase} label="Unemployment Reason" value={profileData.unemployedReason} />
+                  )}
+                  {profileData.selfEmployedCategory && (
+                    <InfoField icon={Briefcase} label="Self-employed Category" value={profileData.selfEmployedCategory} />
+                  )}
                 </div>
               ) : (
                 <div className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="rounded-2xl bg-gradient-to-br from-emerald-50/50 to-teal-50/30 p-6 dark:from-emerald-500/5 dark:to-teal-500/5">
+                    <h3 className="mb-5 text-sm font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300">Primary Employment Status</h3>
                     <div>
-                      <Label>Employment Status</Label>
+                      <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Employment Status *</Label>
                       <select
                         value={formData.employmentStatus || ''}
-                        onChange={(e) => handleInputChange('employmentStatus', e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                        onChange={(e) => handleEmploymentStatusChange(e.target.value as Applicant['employmentStatus'])}
+                        className="mt-1.5 w-full px-4 py-2.5 border border-slate-200 bg-white/50 rounded-lg shadow-sm transition-all focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-white/10 dark:bg-white/5"
                       >
-                        <option value="">Select status</option>
-                        <option value="Employed">Employed</option>
-                        <option value="Unemployed">Unemployed</option>
-                        <option value="Self-Employed">Self-Employed</option>
-                        <option value="New Entrant/Fresh Graduate">New Entrant/Fresh Graduate</option>
+                        <option value="">Select employment status</option>
+                        {nsrpEmploymentStatusOptions.map((status) => (
+                          <option key={status} value={status}>{status}</option>
+                        ))}
                       </select>
-                    </div>
-                    <div>
-                      <Label>Employment Type</Label>
-                      <select
-                        value={formData.employmentType || ''}
-                        onChange={(e) => handleInputChange('employmentType', e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                      >
-                        <option value="">Select type</option>
-                        <option value="regular">Regular</option>
-                        <option value="contractual">Contractual</option>
-                        <option value="part-time">Part-time</option>
-                        <option value="self-employed">Self-employed</option>
-                      </select>
-                    </div>
-                    <div>
-                      <Label>Months Unemployed</Label>
-                      <Input
-                        type="number"
-                        value={formData.monthsUnemployed ?? ''}
-                        onChange={(e) => handleInputChange('monthsUnemployed', e.target.value ? parseInt(e.target.value) : null)}
-                        placeholder="e.g., 3"
-                      />
-                    </div>
-                    <div>
-                      <Label>OFW Status</Label>
-                      <select
-                        value={formData.isOFW ? 'Yes' : 'No'}
-                        onChange={(e) => handleInputChange('isOFW', e.target.value === 'Yes')}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                      >
-                        <option value="No">No</option>
-                        <option value="Yes">Yes</option>
-                      </select>
-                    </div>
-                    <div>
-                      <Label>OFW Country</Label>
-                      <Input
-                        value={formData.owfCountry || ''}
-                        onChange={(e) => handleInputChange('owfCountry', e.target.value)}
-                        placeholder="Country name"
-                      />
-                    </div>
-                    <div>
-                      <Label>Former OFW</Label>
-                      <select
-                        value={formData.isFormerOFW ? 'Yes' : 'No'}
-                        onChange={(e) => handleInputChange('isFormerOFW', e.target.value === 'Yes')}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                      >
-                        <option value="No">No</option>
-                        <option value="Yes">Yes</option>
-                      </select>
-                    </div>
-                    <div>
-                      <Label>Former OFW Country</Label>
-                      <Input
-                        value={formData.formerOFWCountry || ''}
-                        onChange={(e) => handleInputChange('formerOFWCountry', e.target.value)}
-                        placeholder="Country name"
-                      />
-                    </div>
-                    <div>
-                      <Label>4Ps Beneficiary</Label>
-                      <select
-                        value={formData.is4PSBeneficiary ? 'Yes' : 'No'}
-                        onChange={(e) => handleInputChange('is4PSBeneficiary', e.target.value === 'Yes')}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                      >
-                        <option value="No">No</option>
-                        <option value="Yes">Yes</option>
-                      </select>
-                    </div>
-                    <div>
-                      <Label>Household ID</Label>
-                      <Input
-                        value={formData.householdID || ''}
-                        onChange={(e) => handleInputChange('householdID', e.target.value)}
-                        placeholder="4Ps Household ID"
-                      />
                     </div>
                   </div>
 
-                  <Separator />
+                  {formData.employmentStatus === 'Employed' && (
+                    <div className="rounded-2xl border-2 border-blue-200/50 bg-gradient-to-br from-blue-50 to-indigo-50/40 p-6 shadow-sm dark:border-blue-500/20 dark:from-blue-500/10 dark:to-indigo-500/5">
+                      <div className="mb-4 flex items-center gap-2">
+                        <div className="rounded-lg bg-blue-500/10 p-1.5">
+                          <Briefcase className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <h3 className="text-sm font-semibold uppercase tracking-wider text-blue-900 dark:text-blue-300">Employment Details</h3>
+                      </div>
+                      <div className="space-y-5">
+                        <div>
+                          <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Employment Type</Label>
+                          <select
+                            value={formData.employmentStatusDetail || ''}
+                            onChange={(e) => handleEmploymentStatusDetailChange(e.target.value as Applicant['employmentStatusDetail'])}
+                            className="mt-1.5 w-full px-4 py-2.5 border border-blue-200 bg-white/70 rounded-lg shadow-sm transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-blue-500/30 dark:bg-white/10"
+                          >
+                            <option value="">Select employment type</option>
+                            {nsrpEmployedBranches.map((branch) => (
+                              <option key={branch} value={branch}>{branch}</option>
+                            ))}
+                          </select>
+                        </div>
 
-                  <div>
-                    <h3 className="text-lg font-semibold mb-2">Preferred Occupations</h3>
-                    <TagEditor
-                      values={formData.preferredOccupations || []}
-                      onChange={(vals) => handleInputChange('preferredOccupations', vals)}
-                      placeholder="Add occupation and press Enter"
-                    />
-                  </div>
+                        {formData.employmentStatusDetail === 'Self-employed' && (
+                          <div className="rounded-xl border-2 border-indigo-200/50 bg-gradient-to-br from-indigo-50 to-purple-50/40 p-5 shadow-sm dark:border-indigo-500/20 dark:from-indigo-500/10 dark:to-purple-500/5">
+                            <div className="mb-3 flex items-center gap-2">
+                              <div className="rounded-lg bg-indigo-500/10 p-1.5">
+                                <Briefcase className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                              </div>
+                              <h4 className="text-xs font-semibold uppercase tracking-wider text-indigo-900 dark:text-indigo-300">Self-Employment Details</h4>
+                            </div>
+                            <div className="space-y-4">
+                              <div>
+                                <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Self-employed Category</Label>
+                                <select
+                                  value={formData.selfEmployedCategory || ''}
+                                  onChange={(e) => handleSelfEmployedCategoryChange(e.target.value as Applicant['selfEmployedCategory'])}
+                                  className="mt-1.5 w-full px-4 py-2.5 border border-indigo-200 bg-white/70 rounded-lg shadow-sm transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-indigo-500/30 dark:bg-white/10"
+                                >
+                                  <option value="">Select self-employed category</option>
+                                  {nsrpSelfEmploymentCategories.map((category) => (
+                                    <option key={category} value={category}>{category}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              {formData.selfEmployedCategory === 'Others' && (
+                                <div>
+                                  <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Specify Self-employed Category</Label>
+                                  <Input
+                                    value={formData.selfEmployedCategoryOther || ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      handleInputChange('selfEmployedCategoryOther', val);
+                                      if (formData.employmentStatusDetail === 'Self-employed') {
+                                        handleInputChange('employmentType', val || 'Others');
+                                      }
+                                    }}
+                                    placeholder="Please specify your self-employment category"
+                                    className="mt-1.5 border-indigo-200 bg-white/70 shadow-sm transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-indigo-500/30 dark:bg-white/10"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-                  <div>
-                    <h3 className="text-lg font-semibold mb-2">Preferred Work Locations</h3>
-                    <TagEditor
-                      values={formData.preferredLocations || []}
-                      onChange={(vals) => handleInputChange('preferredLocations', vals)}
-                      placeholder="Add location and press Enter"
-                    />
-                  </div>
+                  {formData.employmentStatus === 'Unemployed' && (
+                    <div className="rounded-2xl border-2 border-rose-200/50 bg-gradient-to-br from-rose-50 to-pink-50/40 p-6 shadow-sm dark:border-rose-500/20 dark:from-rose-500/10 dark:to-pink-500/5">
+                      <div className="mb-4 flex items-center gap-2">
+                        <div className="rounded-lg bg-rose-500/10 p-1.5">
+                          <Briefcase className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+                        </div>
+                        <h3 className="text-sm font-semibold uppercase tracking-wider text-rose-900 dark:text-rose-300">Unemployment Details</h3>
+                      </div>
+                      <div className="space-y-5">
+                        <div>
+                          <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Reason for Unemployment</Label>
+                          <select
+                            value={formData.unemployedReason || ''}
+                            onChange={(e) => handleUnemployedReasonChange(e.target.value as Applicant['unemployedReason'])}
+                            className="mt-1.5 w-full px-4 py-2.5 border border-rose-200 bg-white/70 rounded-lg shadow-sm transition-all focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 dark:border-rose-500/30 dark:bg-white/10"
+                          >
+                            <option value="">Select reason for unemployment</option>
+                            {nsrpUnemployedReasons.map((reason) => (
+                              <option key={reason} value={reason}>{reason}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {formData.unemployedReason === 'Others' && (
+                          <div>
+                            <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Specify Unemployment Reason</Label>
+                            <Input
+                              value={formData.unemployedReasonOther || ''}
+                              onChange={(e) => handleInputChange('unemployedReasonOther', e.target.value)}
+                              placeholder="Please specify the reason"
+                              className="mt-1.5 border-rose-200 bg-white/70 shadow-sm transition-all focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 dark:border-rose-500/30 dark:bg-white/10"
+                            />
+                          </div>
+                        )}
+                        {formData.unemployedReason === 'Terminated/Laid off (abroad)' && (
+                          <div>
+                            <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Country of Previous Employment</Label>
+                            <Input
+                              value={formData.unemployedAbroadCountry || ''}
+                              onChange={(e) => handleInputChange('unemployedAbroadCountry', e.target.value)}
+                              placeholder="Enter country name"
+                              className="mt-1.5 border-rose-200 bg-white/70 shadow-sm transition-all focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 dark:border-rose-500/30 dark:bg-white/10"
+                            />
+                          </div>
+                        )}
+                        <div>
+                          <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">How many months looking for work?</Label>
+                          <Input
+                            type="number"
+                            value={formData.monthsUnemployed ?? ''}
+                            onChange={(e) =>
+                              handleInputChange(
+                                'monthsUnemployed',
+                                e.target.value ? parseInt(e.target.value) : undefined,
+                              )
+                            }
+                            placeholder="e.g., 3"
+                            className="mt-1.5 border-rose-200 bg-white/70 shadow-sm transition-all focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 dark:border-rose-500/30 dark:bg-white/10"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
-                  <div>
-                    <h3 className="text-lg font-semibold mb-2">Preferred Overseas Countries</h3>
-                    <TagEditor
-                      values={formData.preferredOverseasCountries || []}
-                      onChange={(vals) => handleInputChange('preferredOverseasCountries', vals)}
-                      placeholder="Add country and press Enter"
-                    />
+                  <div className="rounded-2xl bg-gradient-to-br from-violet-50/50 to-purple-50/30 p-6 dark:from-violet-500/5 dark:to-purple-500/5\">
+                    <h3 className="mb-5 text-sm font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300\">Additional Employment Information</h3>
+                    <div className="space-y-6">
+                      <div className="space-y-4">
+                        <div className="flex items-center space-x-3">
+                          <input
+                            type="checkbox"
+                            id="isOFW"
+                            checked={formData.isOFW || false}
+                            onChange={(e) => handleInputChange('isOFW', e.target.checked)}
+                            className="w-5 h-5 text-emerald-600 border-slate-300 rounded focus:ring-2 focus:ring-emerald-500 transition-all"
+                          />
+                          <Label htmlFor="isOFW" className="cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300">Are you an OFW (Overseas Filipino Worker)?</Label>
+                        </div>
+
+                        {formData.isOFW && (
+                          <div className="ml-8 rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-500/30 dark:bg-emerald-500/5">
+                            <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Country of Work</Label>
+                            <Input
+                              value={formData.owfCountry || ''}
+                              onChange={(e) => handleInputChange('owfCountry', e.target.value)}
+                              placeholder="Enter country where you work"
+                              className="mt-1.5 border-emerald-200 bg-white/70 shadow-sm transition-all focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex items-center space-x-3">
+                          <input
+                            type="checkbox"
+                            id="isFormerOFW"
+                            checked={formData.isFormerOFW || false}
+                            onChange={(e) => handleInputChange('isFormerOFW', e.target.checked)}
+                            className="w-5 h-5 text-teal-600 border-slate-300 rounded focus:ring-2 focus:ring-teal-500 transition-all"
+                          />
+                          <Label htmlFor="isFormerOFW" className="cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300">Are you a former OFW?</Label>
+                        </div>
+
+                        {formData.isFormerOFW && (
+                          <div className="ml-8 space-y-4 rounded-lg border border-teal-200 bg-teal-50/50 p-4 dark:border-teal-500/30 dark:bg-teal-500/5">
+                            <div>
+                              <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Latest Country of Deployment</Label>
+                              <Input
+                                value={formData.formerOFWCountry || ''}
+                                onChange={(e) => handleInputChange('formerOFWCountry', e.target.value)}
+                                placeholder="Enter country of previous deployment"
+                                className="mt-1.5 border-teal-200 bg-white/70 shadow-sm transition-all focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Date of Return to Philippines</Label>
+                              <Input
+                                type="date"
+                                value={formData.returnToPHDate || ''}
+                                onChange={(e) => handleInputChange('returnToPHDate', e.target.value)}
+                                className="mt-1.5 border-teal-200 bg-white/70 shadow-sm transition-all focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex items-center space-x-3">
+                          <input
+                            type="checkbox"
+                            id="is4PSBeneficiary"
+                            checked={formData.is4PSBeneficiary || false}
+                            onChange={(e) => handleInputChange('is4PSBeneficiary', e.target.checked)}
+                            className="w-5 h-5 text-amber-600 border-slate-300 rounded focus:ring-2 focus:ring-amber-500 transition-all"
+                          />
+                          <Label htmlFor="is4PSBeneficiary" className="cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300">Are you a 4Ps (Pantawid Pamilya) beneficiary?</Label>
+                        </div>
+
+                        {formData.is4PSBeneficiary && (
+                          <div className="ml-8 rounded-lg border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-500/30 dark:bg-amber-500/5">
+                            <Label className="text-sm font-medium text-slate-700 dark:text-slate-300">Household ID Number</Label>
+                            <Input
+                              value={formData.householdID || ''}
+                              onChange={(e) => handleInputChange('householdID', e.target.value)}
+                              placeholder="Enter your 4Ps Household ID"
+                              className="mt-1.5 border-amber-200 bg-white/70 shadow-sm transition-all focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -579,75 +1257,159 @@ export default function JobseekerProfilePage() {
         </TabsContent>
 
         {/* Education Tab */}
-        <TabsContent value="education">
-          <Card>
-            <CardHeader>
+        <TabsContent value="industry">
+          <Card className={sectionCardClass}>
+            <CardHeader className={sectionHeaderClass}>
               <CardTitle className="flex items-center gap-2">
                 <GraduationCap className="w-5 h-5" />
-                IV. Educational Background
+                IV. EDUCATIONAL BACKGROUND
               </CardTitle>
-              <CardDescription>Your educational attainment and training</CardDescription>
+              <CardDescription>Your educational attainment and qualifications</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {!isEditing ? (
-                profileData.education && profileData.education.length > 0 ? (
+              <div>
+                {!isEditing ? (
                   <div className="space-y-4">
-                    {profileData.education.map((edu, idx) => (
-                      <div key={idx} className="border rounded-lg p-4 bg-slate-50">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <InfoField label="Level" value={edu.level} />
-                          <InfoField label="Course/Strand" value={edu.course || edu.strand || 'N/A'} />
-                          <InfoField label="School" value={edu.schoolName || 'N/A'} />
-                          <InfoField label="Year Graduated" value={edu.yearGraduated || 'N/A'} />
-                          <InfoField label="Level Reached" value={edu.levelReached || 'N/A'} />
+                    {profileData.education && profileData.education.length > 0 ? (
+                      profileData.education.map((edu: any, idx: number) => (
+                        <div
+                          key={idx}
+                          className="rounded-lg border border-slate-200/70 bg-slate-50/50 p-4 dark:border-white/10 dark:bg-slate-950/30"
+                        >
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <InfoField label="Level" value={edu.level} />
+                            <InfoField label="Course/Program" value={edu.course || 'N/A'} />
+                            <InfoField label="School Name" value={edu.schoolName || 'N/A'} />
+                            <InfoField label="Year Graduated" value={edu.yearGraduated || 'N/A'} />
+                            {edu.strand && <InfoField label="Strand (SHS)" value={edu.strand} />}
+                            {edu.levelReached && <InfoField label="Level Reached" value={edu.levelReached} />}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))
+                    ) : (
+                      <p className="text-slate-500">No education records added yet</p>
+                    )}
                   </div>
                 ) : (
-                  <p className="text-slate-500 text-center py-8">No educational background specified</p>
-                )
-              ) : (
-                <div className="space-y-3">
-                  {(formData.education || []).map((edu: any, idx: number) => (
-                    <div key={idx} className="border rounded-lg p-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <div>
-                          <Label>Level</Label>
-                          <Input value={edu.level || ''} onChange={(e) => updateArrayField('education', idx, 'level', e.target.value)} />
+                  <div className="space-y-4">
+                    {formData.education && formData.education.length > 0 ? (
+                      formData.education.map((edu: any, idx: number) => (
+                        <div
+                          key={idx}
+                          className="rounded-lg border border-slate-200/70 bg-slate-50/50 p-4 space-y-3 dark:border-white/10 dark:bg-slate-950/30"
+                        >
+                          <div className="flex justify-between items-center">
+                            <h4 className="font-semibold">Education #{idx + 1}</h4>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                const newEducation = [...(formData.education || [])];
+                                newEducation.splice(idx, 1);
+                                handleInputChange('education', newEducation);
+                              }}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <Label>Educational Level *</Label>
+                              <select
+                                value={edu.level || ''}
+                                onChange={(e) => {
+                                  const newEducation = [...(formData.education || [])];
+                                  newEducation[idx].level = e.target.value;
+                                  handleInputChange('education', newEducation);
+                                }}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                              >
+                                <option value="">Select level</option>
+                                {educationLevels.map((level) => (
+                                  <option key={level} value={level}>{level}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <Label>Course/Program</Label>
+                              <Input
+                                value={edu.course || ''}
+                                onChange={(e) => {
+                                  const newEducation = [...(formData.education || [])];
+                                  newEducation[idx].course = e.target.value;
+                                  handleInputChange('education', newEducation);
+                                }}
+                                placeholder="Enter course or program"
+                              />
+                            </div>
+                            <div>
+                              <Label>School Name</Label>
+                              <Input
+                                value={edu.schoolName || ''}
+                                onChange={(e) => {
+                                  const newEducation = [...(formData.education || [])];
+                                  newEducation[idx].schoolName = e.target.value;
+                                  handleInputChange('education', newEducation);
+                                }}
+                                placeholder="Enter school name"
+                              />
+                            </div>
+                            <div>
+                              <Label>Year Graduated</Label>
+                              <Input
+                                value={edu.yearGraduated || ''}
+                                onChange={(e) => {
+                                  const newEducation = [...(formData.education || [])];
+                                  newEducation[idx].yearGraduated = e.target.value;
+                                  handleInputChange('education', newEducation);
+                                }}
+                                placeholder="e.g., 2020"
+                              />
+                            </div>
+                            {edu.level === 'Senior High School' && (
+                              <div>
+                                <Label>Strand</Label>
+                                <Input
+                                  value={edu.strand || ''}
+                                  onChange={(e) => {
+                                    const newEducation = [...(formData.education || [])];
+                                    newEducation[idx].strand = e.target.value;
+                                    handleInputChange('education', newEducation);
+                                  }}
+                                  placeholder="e.g., STEM, ABM, HUMSS"
+                                />
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <Label>Course/Strand</Label>
-                          <Input value={edu.course || edu.strand || ''} onChange={(e) => updateArrayField('education', idx, 'course', e.target.value)} />
-                        </div>
-                        <div>
-                          <Label>School</Label>
-                          <Input value={edu.schoolName || ''} onChange={(e) => updateArrayField('education', idx, 'schoolName', e.target.value)} />
-                        </div>
-                        <div>
-                          <Label>Year Graduated</Label>
-                          <Input value={edu.yearGraduated || ''} onChange={(e) => updateArrayField('education', idx, 'yearGraduated', e.target.value)} />
-                        </div>
-                        <div>
-                          <Label>Level Reached</Label>
-                          <Input value={edu.levelReached || ''} onChange={(e) => updateArrayField('education', idx, 'levelReached', e.target.value)} />
-                        </div>
-                      </div>
-                      <div className="mt-3 flex justify-end">
-                        <Button variant="outline" onClick={() => removeArrayItem('education', idx)}>
-                          Remove
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                  <Button variant="secondary" onClick={() => addArrayItem('education', { level: '', course: '', schoolName: '' })}>Add Education</Button>
-                </div>
-              )}
+                      ))
+                    ) : (
+                      <p className="text-slate-500">No education records added yet</p>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => addArrayItem('education', {
+                        level: '',
+                        course: '',
+                        schoolName: '',
+                        yearGraduated: '',
+                        strand: '',
+                        levelReached: '',
+                      })}
+                      className="mt-4"
+                    >
+                      Add Education
+                    </Button>
+                  </div>
+                )}
+              </div>
 
               <Separator />
 
               <div>
-                <h3 className="text-lg font-semibold mb-4">Technical/Vocational Training</h3>
+                <h3 className="text-lg font-semibold mb-4">V. TECHNICAL/VOCATIONAL TRAINING</h3>
                 {!isEditing ? (
                   profileData.technicalTraining && profileData.technicalTraining.length > 0 ? (
                     <div className="space-y-4">
@@ -705,7 +1467,7 @@ export default function JobseekerProfilePage() {
               <Separator />
 
               <div>
-                <h3 className="text-lg font-semibold mb-4">Professional Licenses</h3>
+                <h3 className="text-lg font-semibold mb-4">VI. PROFESSIONAL LICENSES AND CERTIFICATIONS</h3>
                 {!isEditing ? (
                   profileData.professionalLicenses && profileData.professionalLicenses.length > 0 ? (
                     <div className="space-y-4">
@@ -759,12 +1521,12 @@ export default function JobseekerProfilePage() {
         </TabsContent>
 
         {/* Work Experience Tab */}
-        <TabsContent value="experience">
-          <Card>
-            <CardHeader>
+        <TabsContent value="industry">
+          <Card className={sectionCardClass}>
+            <CardHeader className={sectionHeaderClass}>
               <CardTitle className="flex items-center gap-2">
                 <Building2 className="w-5 h-5" />
-                V. Work Experience
+                VII. WORK EXPERIENCE
               </CardTitle>
               <CardDescription>Your employment history (last 10 years)</CardDescription>
             </CardHeader>
@@ -773,7 +1535,10 @@ export default function JobseekerProfilePage() {
                 profileData.workExperience && profileData.workExperience.length > 0 ? (
                   <div className="space-y-4">
                     {profileData.workExperience.map((work, idx) => (
-                      <div key={idx} className="border rounded-lg p-4 bg-slate-50">
+                      <div
+                        key={idx}
+                        className="rounded-lg border border-slate-200/70 bg-slate-50/50 p-4 dark:border-white/10 dark:bg-slate-950/30"
+                      >
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                           <InfoField label="Company" value={work.companyName} />
                           <InfoField label="Position" value={work.position} />
@@ -790,7 +1555,7 @@ export default function JobseekerProfilePage() {
               ) : (
                 <div className="space-y-3">
                   {(formData.workExperience || []).map((w: any, idx: number) => (
-                    <div key={idx} className="border rounded-lg p-4">
+                    <div key={idx} className="rounded-lg border border-slate-200/70 p-4 dark:border-white/10">
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         <div>
                           <Label>Company</Label>
@@ -810,7 +1575,19 @@ export default function JobseekerProfilePage() {
                         </div>
                         <div>
                           <Label>Status</Label>
-                          <Input value={w.status || ''} onChange={(e) => updateArrayField('workExperience', idx, 'status', e.target.value)} />
+                          <select
+                            value={w.status || ''}
+                            onChange={(e) => updateArrayField('workExperience', idx, 'status', e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                          >
+                            <option value="">Select status</option>
+                            {workExperienceStatusOptions.map((opt) => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                            {w.status && !workExperienceStatusOptions.includes(w.status as any) && (
+                              <option value={w.status}>{`Keep current: ${w.status}`}</option>
+                            )}
+                          </select>
                         </div>
                       </div>
                       <div className="mt-3 flex justify-end">
@@ -826,14 +1603,14 @@ export default function JobseekerProfilePage() {
         </TabsContent>
 
         {/* Skills Tab */}
-        <TabsContent value="skills">
-          <Card>
-            <CardHeader>
+        <TabsContent value="industry">
+          <Card className={sectionCardClass}>
+            <CardHeader className={sectionHeaderClass}>
               <CardTitle className="flex items-center gap-2">
                 <Award className="w-5 h-5" />
-                VI. Skills & Language Proficiency
+                VIII. OTHER SKILLS ACQUIRED WITHOUT CERTIFICATE
               </CardTitle>
-              <CardDescription>Your acquired skills and language abilities</CardDescription>
+              <CardDescription>Skills you've acquired through experience or training</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {!isEditing ? (
@@ -857,19 +1634,33 @@ export default function JobseekerProfilePage() {
               ) : (
                 <div className="space-y-3">
                   <h3 className="text-lg font-semibold">Other Skills</h3>
-                  <TagEditor
-                    values={formData.otherSkills || []}
-                    onChange={(vals) => handleInputChange('otherSkills', vals)}
-                    placeholder="Add a skill and press Enter"
-                  />
-                  <div>
-                    <Label>Additional Skills (text)</Label>
-                    <Input
-                      value={formData.otherSkillsSpecify || ''}
-                      onChange={(e) => handleInputChange('otherSkillsSpecify', e.target.value)}
-                      placeholder="Optional additional description"
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {otherSkillsOptions.map((skill) => {
+                      const checked = (formData.otherSkills || []).includes(skill);
+                      return (
+                        <label key={skill} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => handleOtherSkillToggle(skill)}
+                          />
+                          {skill}
+                        </label>
+                      );
+                    })}
                   </div>
+                  {(formData.otherSkills || []).includes('Others') && (
+                    <div>
+                      <Label>Please specify other skills</Label>
+                      <div className="mt-2">
+                        <SkillSpecializationInput
+                          value={String(formData.otherSkillsSpecify ?? "")}
+                          onChange={(next) => handleInputChange('otherSkillsSpecify', next)}
+                          placeholder="Type a skill and press Enter"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -879,12 +1670,15 @@ export default function JobseekerProfilePage() {
                 <div>
                   <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                     <Languages className="w-5 h-5" />
-                    Language Proficiency
+                    Language/Dialect Proficiency
                   </h3>
                   {profileData.languageProficiency && profileData.languageProficiency.length > 0 ? (
                     <div className="space-y-3">
                       {profileData.languageProficiency.map((lang, idx) => (
-                        <div key={idx} className="border rounded-lg p-4 bg-slate-50">
+                        <div
+                          key={idx}
+                          className="rounded-lg border border-slate-200/70 bg-slate-50/50 p-4 dark:border-white/10 dark:bg-slate-950/30"
+                        >
                           <h4 className="font-semibold mb-2">{lang.language}</h4>
                           <div className="flex flex-wrap gap-2">
                             {lang.read && <Badge variant="outline">Read</Badge>}
@@ -902,7 +1696,7 @@ export default function JobseekerProfilePage() {
               ) : (
                 <div className="space-y-3">
                   {(formData.languageProficiency || []).map((lang: any, idx: number) => (
-                    <div key={idx} className="border rounded-lg p-4">
+                    <div key={idx} className="rounded-lg border border-slate-200/70 p-4 dark:border-white/10">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div className="md:col-span-1">
                           <Label>Language</Label>
@@ -936,34 +1730,132 @@ export default function JobseekerProfilePage() {
         </TabsContent>
 
         {/* Preferences Tab */}
-        <TabsContent value="preferences">
-          <Card>
-            <CardHeader>
+        <TabsContent value="documents">
+          <Card className={sectionCardClass}>
+            <CardHeader className={sectionHeaderClass}>
               <CardTitle className="flex items-center gap-2">
-                <Settings className="w-5 h-5" />
-                VII. Job Preferences & Settings
+                <FileText className="w-5 h-5" />
+                Documents
               </CardTitle>
-              <CardDescription>Your work preferences and account settings</CardDescription>
+              <CardDescription>Your identifiers, preferences, and NSRP registration details</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <InfoField icon={Briefcase} label="Preferred Employment Type" value={profileData.employmentType4 || 'Not specified'} />
-                <InfoField icon={FileText} label="Account Role" value={user?.role || 'jobseeker'} />
-                <InfoField icon={Calendar} label="Profile Created" value={profileData.createdAt ? new Date(profileData.createdAt).toLocaleDateString() : 'N/A'} />
-                <InfoField icon={Calendar} label="Last Updated" value={profileData.updatedAt ? new Date(profileData.updatedAt).toLocaleDateString() : 'N/A'} />
-              </div>
+              {!isEditing ? (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <InfoField icon={Briefcase} label="Preferred Employment Type" value={profileData.employmentType4 || 'Not specified'} />
+                    <InfoField icon={FileText} label="Account Role" value={user?.role || 'jobseeker'} />
+                    <InfoField icon={Calendar} label="Profile Created" value={profileData.createdAt ? new Date(profileData.createdAt).toLocaleDateString() : 'N/A'} />
+                    <InfoField icon={Calendar} label="Last Updated" value={profileData.updatedAt ? new Date(profileData.updatedAt).toLocaleDateString() : 'N/A'} />
+                  </div>
 
-              <Separator />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <InfoField icon={Briefcase} label="Job Preference" value={profileData.jobPreference || 'Not specified'} />
+                    <InfoField icon={Briefcase} label="Government ID Type" value={profileData.governmentIdType || 'Not specified'} />
+                    <InfoField icon={Briefcase} label="Government ID Number" value={profileData.governmentIdNumber || 'Not specified'} />
+                    <InfoField icon={Briefcase} label="NSRP Number" value={profileData.nsrpNumber || 'Not specified'} />
+                    <InfoField icon={Briefcase} label="Willing to Relocate" value={profileData.willingToRelocate ? 'Yes' : 'No'} />
+                    <InfoField icon={Briefcase} label="Willing to Work Overseas" value={profileData.willingToWorkOverseas ? 'Yes' : 'No'} />
+                  </div>
 
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Profile Completeness</h3>
-                <ProfileCompleteness data={profileData} />
-              </div>
+                  <Separator />
+
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4">Profile Completeness</h3>
+                    <ProfileCompleteness data={profileData} />
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div>
+                      <Label>Preferred Employment Type</Label>
+                      <select
+                        value={formData.employmentType4 || ''}
+                        onChange={(e) => handleInputChange('employmentType4', e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                      >
+                        <option value="">Select type</option>
+                        {nsrpEmploymentTypes.map((type) => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <Label>Job Preference</Label>
+                      <select
+                        value={formData.jobPreference || ''}
+                        onChange={(e) => handleInputChange('jobPreference', e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                      >
+                        <option value="">Select preference</option>
+                        <option value="Full-Time">Full-Time</option>
+                        <option value="Part-Time">Part-Time</option>
+                        <option value="Contractual">Contractual</option>
+                        <option value="Seasonal">Seasonal</option>
+                        <option value="Internship">Internship</option>
+                        <option value="Flexible">Flexible</option>
+                        <option value="Project-Based">Project-Based</option>
+                      </select>
+                    </div>
+                    <div>
+                      <Label>Government ID Type</Label>
+                      <Input
+                        value={formData.governmentIdType || ''}
+                        onChange={(e) => handleInputChange('governmentIdType', e.target.value)}
+                        placeholder="e.g., PhilHealth, SSS"
+                      />
+                    </div>
+                    <div>
+                      <Label>Government ID Number</Label>
+                      <Input
+                        value={formData.governmentIdNumber || ''}
+                        onChange={(e) => handleInputChange('governmentIdNumber', e.target.value)}
+                        placeholder="ID Number"
+                      />
+                    </div>
+                    <div>
+                      <Label>NSRP Number</Label>
+                      <Input
+                        value={formData.nsrpNumber || ''}
+                        onChange={(e) => handleInputChange('nsrpNumber', e.target.value)}
+                        placeholder="NSRP Number"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={!!formData.willingToRelocate}
+                        onChange={(e) => handleInputChange('willingToRelocate', e.target.checked)}
+                      />
+                      Willing to relocate
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={!!formData.willingToWorkOverseas}
+                        onChange={(e) => handleInputChange('willingToWorkOverseas', e.target.checked)}
+                      />
+                      Willing to work overseas
+                    </label>
+                  </div>
+
+                  <Separator />
+
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4">Profile Completeness</h3>
+                    <ProfileCompleteness data={{ ...profileData, ...formData } as Applicant} />
+                  </div>
+                </div>
+              )}
 
               <Separator />
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="font-semibold text-blue-900 mb-2">📋 NSRP Registration Information</h4>
+                <h4 className="font-semibold text-blue-900 mb-2">NSRP Registration Information</h4>
                 <p className="text-sm text-blue-800">
                   This profile follows the official <strong>National Service and Referral Program (NSRP)</strong> registration form format.
                   Keep your information up-to-date to increase your chances of job placement.
@@ -973,6 +1865,9 @@ export default function JobseekerProfilePage() {
           </Card>
         </TabsContent>
       </Tabs>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
@@ -1067,7 +1962,7 @@ function TagEditor({ values, onChange, placeholder }: { values: string[]; onChan
         {values.map((v, idx) => (
           <span key={idx} className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-slate-100 text-slate-800 text-sm">
             {v}
-            <button type="button" className="text-slate-500 hover:text-slate-700" onClick={() => removeTag(idx)}>×</button>
+            <button type="button" className="text-slate-500 hover:text-slate-700" onClick={() => removeTag(idx)}>??</button>
           </span>
         ))}
         {values.length === 0 && <p className="text-slate-500">No items</p>}
@@ -1075,3 +1970,5 @@ function TagEditor({ values, onChange, placeholder }: { values: string[]; onChan
     </div>
   );
 }
+
+

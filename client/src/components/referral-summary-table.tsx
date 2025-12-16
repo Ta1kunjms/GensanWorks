@@ -20,6 +20,8 @@ import { useToast } from "@/hooks/use-toast";
 import { ReferralViewModal } from "./referral-view-modal";
 import { FeedbackRequestModal } from "./feedback-request-modal";
 import { ShareDropdown } from "./share-dropdown";
+import { format } from "date-fns";
+import { authFetch } from "@/lib/auth";
 
 export interface ReferralSummaryItem {
   id: string;
@@ -97,13 +99,21 @@ export function ReferralSummaryTable({
   const jobCategories = useMemo(() => ["all", ...Array.from(new Set(displayData.map(item => item.jobCategory).filter(Boolean)))], [displayData]);
   const statuses = ["all", "Hired", "Pending", "Rejected"];
 
+  const formatDate = (value: string) => {
+    if (!value) return "-";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return format(d, "PP p");
+  };
+
   // Filter data
   const filteredData = useMemo(() => {
     return displayData.filter(item => {
       if (selectedBarangay !== "all" && item.barangay !== selectedBarangay) return false;
       if (selectedEmployer !== "all" && item.employer !== selectedEmployer) return false;
       if (selectedJobCategory !== "all" && item.jobCategory !== selectedJobCategory) return false;
-      if (selectedStatus !== "all" && item.status !== selectedStatus) return false;
+      const status = item.status || "Pending";
+      if (selectedStatus !== "all" && status !== selectedStatus) return false;
       return true;
     });
   }, [displayData, selectedBarangay, selectedEmployer, selectedJobCategory, selectedStatus]);
@@ -189,7 +199,7 @@ export function ReferralSummaryTable({
 
     try {
       console.log("Deleting referral with ID:", item.id);
-      const response = await fetch(`/api/referrals/${item.id}`, {
+      const response = await authFetch(`/api/referrals/${item.id}`, {
         method: "DELETE",
       });
 
@@ -222,15 +232,18 @@ export function ReferralSummaryTable({
 
   return (
     <>
-      <div className="rounded-lg bg-white border border-border p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-semibold text-slate-900">
-            Referral & Placement Summary
-          </h3>
-          <div className="flex gap-2 flex-wrap">
+      <div className="rounded-xl bg-white border border-border p-4 sm:p-6 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-4 sm:mb-6">
+          <div>
+            <p className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Overview</p>
+            <h3 className="text-xl font-semibold text-slate-900 leading-tight">
+              Referral & Placement Summary
+            </h3>
+          </div>
+          <div className="flex gap-2 flex-wrap justify-start md:justify-end">
             {/* Filter Dropdowns */}
             <Select value={selectedBarangay} onValueChange={setSelectedBarangay}>
-              <SelectTrigger className="w-[140px] h-9 text-xs">
+              <SelectTrigger className="w-[160px] h-9 text-xs">
                 <SelectValue placeholder="Barangay" />
               </SelectTrigger>
               <SelectContent>
@@ -243,7 +256,7 @@ export function ReferralSummaryTable({
             </Select>
 
             <Select value={selectedEmployer} onValueChange={setSelectedEmployer}>
-              <SelectTrigger className="w-[140px] h-9 text-xs">
+              <SelectTrigger className="w-[160px] h-9 text-xs">
                 <SelectValue placeholder="Employer" />
               </SelectTrigger>
               <SelectContent>
@@ -256,7 +269,7 @@ export function ReferralSummaryTable({
             </Select>
 
             <Select value={selectedJobCategory} onValueChange={setSelectedJobCategory}>
-              <SelectTrigger className="w-[150px] h-9 text-xs">
+              <SelectTrigger className="w-[170px] h-9 text-xs">
                 <SelectValue placeholder="Job Category" />
               </SelectTrigger>
               <SelectContent>
@@ -269,7 +282,7 @@ export function ReferralSummaryTable({
             </Select>
 
             <Select value={selectedDateRange} onValueChange={setSelectedDateRange}>
-              <SelectTrigger className="w-[130px] h-9 text-xs">
+              <SelectTrigger className="w-[150px] h-9 text-xs">
                 <SelectValue placeholder="Date Range" />
               </SelectTrigger>
               <SelectContent>
@@ -282,7 +295,7 @@ export function ReferralSummaryTable({
             </Select>
 
             <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-              <SelectTrigger className="w-[120px] h-9 text-xs">
+              <SelectTrigger className="w-[140px] h-9 text-xs">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -300,124 +313,129 @@ export function ReferralSummaryTable({
               onClick={handleExportCSV}
             >
               <Download className="h-3 w-3" />
-              Export CSV
+              <span className="hidden md:inline">Export CSV</span>
             </Button>
           </div>
+
         </div>
 
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-b border-border">
-                <TableHead className="text-xs font-semibold text-slate-700 bg-slate-50">
-                  Referral ID
-                </TableHead>
-                <TableHead className="text-xs font-semibold text-slate-700 bg-slate-50">
-                  Applicant
-                </TableHead>
-                <TableHead className="text-xs font-semibold text-slate-700 bg-slate-50">
-                  Vacancy
-                </TableHead>
-                <TableHead className="text-xs font-semibold text-slate-700 bg-slate-50">
-                  Employer
-                </TableHead>
-                <TableHead className="text-xs font-semibold text-slate-700 bg-slate-50">
-                  Barangay
-                </TableHead>
-                <TableHead className="text-xs font-semibold text-slate-700 bg-slate-50">
-                  Category
-                </TableHead>
-                <TableHead className="text-xs font-semibold text-slate-700 bg-slate-50">
-                  Date Referred
-                </TableHead>
-                <TableHead className="text-xs font-semibold text-slate-700 bg-slate-50">
-                  Status
-                </TableHead>
-                <TableHead className="text-xs font-semibold text-slate-700 bg-slate-50">
-                  Actions
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredData.length > 0 ? (
-                filteredData.map((item) => (
-                  <TableRow key={item.id} className="border-b border-border hover:bg-slate-50">
-                    <TableCell className="text-sm font-medium text-slate-900">
-                      {item.referralId}
-                    </TableCell>
-                    <TableCell className="text-sm text-slate-700">
-                      {item.applicant}
-                    </TableCell>
-                    <TableCell className="text-sm text-slate-700">
-                      {item.vacancy}
-                    </TableCell>
-                    <TableCell className="text-sm text-slate-700">
-                      {item.employer}
-                    </TableCell>
-                    <TableCell className="text-sm text-slate-700">
-                      {item.barangay}
-                    </TableCell>
-                    <TableCell className="text-sm text-slate-700">
-                      {item.jobCategory}
-                    </TableCell>
-                    <TableCell className="text-sm text-slate-700">
-                      {item.dateReferred}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      <span
-                        className={`inline-flex items-center gap-2 ${getStatusColor(
-                          item.status
-                        )}`}
-                      >
-                        <span className={`w-2 h-2 rounded-full ${getStatusBgColor(item.status)}`} />
-                        {item.status}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      <div className="flex gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                          title="View Details"
-                          onClick={() => handleViewReferral(item)}
-                        >
-                          <Eye className="h-4 w-4 text-slate-600 hover:text-slate-900" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                          title={item.feedback ? "Feedback Received" : "Request Feedback"}
-                          onClick={() => handleMessageApplicant(item)}
-                          disabled={!!item.feedback}
-                        >
-                          <MessageCircle className={`h-4 w-4 ${item.feedback ? "text-green-600" : "text-slate-600 hover:text-slate-900"}`} />
-                        </Button>
-                        <ShareDropdown referral={item} />
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                          title="Delete Referral (Alpha Testing)"
-                          onClick={() => handleDeleteReferral(item)}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600 hover:text-red-900" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={9} className="text-center text-sm text-slate-600 py-4">
-                    No referrals found matching the selected filters.
-                  </TableCell>
+          <div className="hidden md:block overflow-x-auto rounded-lg border border-slate-200">
+            <Table className="min-w-[1000px]">
+              <TableHeader>
+                <TableRow className="border-b border-border bg-slate-50/70">
+                  <TableHead className="text-xs font-semibold text-slate-700">Referral ID</TableHead>
+                  <TableHead className="text-xs font-semibold text-slate-700">Applicant</TableHead>
+                  <TableHead className="text-xs font-semibold text-slate-700">Vacancy</TableHead>
+                  <TableHead className="text-xs font-semibold text-slate-700">Employer</TableHead>
+                  <TableHead className="text-xs font-semibold text-slate-700">Barangay</TableHead>
+                  <TableHead className="text-xs font-semibold text-slate-700">Category</TableHead>
+                  <TableHead className="text-xs font-semibold text-slate-700">Date Referred</TableHead>
+                  <TableHead className="text-xs font-semibold text-slate-700">Status</TableHead>
+                  <TableHead className="text-xs font-semibold text-slate-700">Actions</TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                    {filteredData.length > 0 ? (
+                      filteredData.map((item) => (
+                        <TableRow key={item.id} className="border-b border-border hover:bg-slate-50">
+                          <TableCell className="text-sm font-medium text-slate-900">{item.referralId}</TableCell>
+                          <TableCell className="text-sm text-slate-700">{item.applicant}</TableCell>
+                          <TableCell className="text-sm text-slate-700">{item.vacancy}</TableCell>
+                          <TableCell className="text-sm text-slate-700">{item.employer}</TableCell>
+                          <TableCell className="text-sm text-slate-700">{item.barangay}</TableCell>
+                          <TableCell className="text-sm text-slate-700">{item.jobCategory}</TableCell>
+                          <TableCell className="text-sm text-slate-700">{formatDate(item.dateReferred)}</TableCell>
+                          <TableCell className="text-sm">
+                            <span className={`inline-flex items-center gap-2 ${getStatusColor(item.status || "Pending")}`}>
+                              <span className={`w-2 h-2 rounded-full ${getStatusBgColor(item.status || "Pending")}`} />
+                              {item.status || "Pending"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            <div className="flex gap-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                title="View Details"
+                                onClick={() => handleViewReferral(item)}
+                              >
+                                <Eye className="h-4 w-4 text-slate-600 hover:text-slate-900" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                title={item.feedback ? "Feedback Received" : "Request Feedback"}
+                                onClick={() => handleMessageApplicant(item)}
+                              >
+                                <MessageCircle className={`h-4 w-4 ${item.feedback ? "text-green-600" : "text-slate-600"}`} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                title="Delete"
+                                onClick={() => handleDeleteReferral(item)}
+                              >
+                                <Trash2 className="h-4 w-4 text-red-600" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center py-8 text-slate-500">
+                          No referrals found with the selected filters.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile cards */}
+              <div className="grid gap-3 md:hidden">
+                {filteredData.length === 0 && (
+                  <div className="border border-dashed border-slate-300 rounded-lg p-6 text-center text-sm text-slate-600">
+                    No referrals found with the selected filters.
+                  </div>
+                )}
+                {filteredData.map((item) => (
+                  <div key={item.id} className="rounded-lg border border-slate-200 p-4 shadow-xs bg-white">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-500">Referral ID</p>
+                        <p className="text-base font-semibold text-slate-900">{item.referralId}</p>
+                        <p className="text-sm text-slate-700">{item.vacancy}</p>
+                        <p className="text-sm text-slate-500">{item.employer}</p>
+                      </div>
+                      <span className={`inline-flex items-center gap-2 text-sm ${getStatusColor(item.status || "Pending")}`}>
+                        <span className={`w-2 h-2 rounded-full ${getStatusBgColor(item.status || "Pending")}`} />
+                        {item.status || "Pending"}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-700">
+                      <span className="truncate"><strong className="text-slate-600">Applicant:</strong> {item.applicant}</span>
+                      <span className="truncate"><strong className="text-slate-600">Barangay:</strong> {item.barangay}</span>
+                      <span className="truncate"><strong className="text-slate-600">Category:</strong> {item.jobCategory}</span>
+                      <span className="truncate"><strong className="text-slate-600">Date:</strong> {formatDate(item.dateReferred)}</span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button variant="secondary" size="sm" className="gap-2" onClick={() => handleViewReferral(item)}>
+                        <Eye className="h-4 w-4" /> View
+                      </Button>
+                      <Button variant="outline" size="sm" className="gap-2" onClick={() => handleMessageApplicant(item)}>
+                        <MessageCircle className="h-4 w-4" /> Feedback
+                      </Button>
+                      <Button variant="destructive" size="sm" className="gap-2" onClick={() => handleDeleteReferral(item)}>
+                        <Trash2 className="h-4 w-4" /> Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
       </div>
 
       {/* Modals */}

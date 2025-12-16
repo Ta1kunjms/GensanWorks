@@ -1,0 +1,155 @@
+Mermaid Sequence Diagrams — GensanWorks (paste into Mermaid renderer)
+
+Notes
+- Server auth is JWT Bearer (Authorization: Bearer <token>) via server/middleware.ts.
+- Client stores token/user in localStorage via client/src/lib/auth.tsx.
+- DB access is via Drizzle (server/storage.ts -> server/database.ts -> SQLite/Postgres).
+- WebSocket is currently stubbed/disabled; notifications are typically retrieved by HTTP.
+
+------------------------------------------------------------
+1) Login (JWT issuance)
+
+sequenceDiagram
+  autonumber
+  participant U as User (Browser)
+  participant UI as React UI (client)
+  participant API as Express API (server/routes.ts)
+  participant DB as DB (Drizzle/SQLite|Postgres)
+
+  U->>UI: Enter email + password
+  UI->>API: POST /api/auth/login {email,password}
+  API->>DB: SELECT user by email (admins/users/employers depending on role)
+  DB-->>API: user row + password_hash
+  API->>API: verifyPassword(password, hash)
+  alt credentials valid
+    API->>API: generateToken({id,email,role,name})
+    API-->>UI: 200 {token, user}
+    UI->>UI: localStorage.set gw_token + gw_user
+    UI-->>U: Redirect to role dashboard route
+  else credentials invalid
+    API-->>UI: 401 error {code: INVALID_CREDENTIALS}
+    UI-->>U: Show error
+  end
+
+------------------------------------------------------------
+2) Jobseeker applies to a job
+
+sequenceDiagram
+  autonumber
+  participant U as Jobseeker (Browser)
+  participant UI as React UI (client)
+  participant API as Express API
+  participant DB as DB
+
+  U->>UI: Click Apply on job card
+  UI->>UI: Read gw_token from localStorage
+  UI->>API: POST /api/jobs/:jobId/apply (Authorization: Bearer)
+  API->>API: authMiddleware verifies JWT
+  API->>DB: INSERT into applications(job_id, applicant_id, employer_id, status='pending', ...)
+  DB-->>API: inserted application
+  API-->>UI: 200 {applicationId/status}
+  UI-->>U: Show "Applied" / application status
+
+------------------------------------------------------------
+3) Employer reviews applications + updates status
+
+sequenceDiagram
+  autonumber
+  participant E as Employer (Browser)
+  participant UI as React UI (client)
+  participant API as Express API
+  participant DB as DB
+
+  E->>UI: Open Applications page
+  UI->>API: GET /api/employer/applications (Authorization: Bearer)
+  API->>API: authMiddleware; (intended) roleMiddleware('employer')
+  API->>DB: SELECT applications WHERE employer_id = currentEmployer
+  DB-->>API: list of applications
+  API-->>UI: 200 applications[]
+
+  E->>UI: Change application status (e.g., shortlisted/hired/rejected)
+  UI->>API: PUT /api/employer/applications/:id {status, notes} (Authorization: Bearer)
+  API->>API: validate status in allowed set
+  API->>DB: UPDATE applications SET status=?, notes=?, updated_at=NOW
+  DB-->>API: updated row
+  API-->>UI: 200 updated application
+  UI-->>E: UI updates pipeline/status badge
+
+------------------------------------------------------------
+4) Admin runs AI match for a job (Groq optional)
+
+sequenceDiagram
+  autonumber
+  participant A as Admin (Browser)
+  participant UI as React UI (client)
+  participant API as Express API
+  participant DB as DB
+  participant AI as AIJobMatcher (server/ai-job-matcher.ts)
+  participant G as Groq LLM API
+
+  A->>UI: Open job matching view
+  UI->>API: GET /api/jobs/:jobId/match (Authorization: Bearer)
+  API->>API: authMiddleware (+ adminOnly/role checks depending on route)
+  API->>DB: SELECT job by id
+  DB-->>API: job
+  API->>DB: SELECT candidate applicants (users)
+  DB-->>API: applicants[]
+  API->>AI: matchApplicantsToJob(applicants, job, options)
+  alt GROQ_API_KEY configured AND useAI true
+    AI->>AI: Phase 1 fast scoring over all applicants
+    AI->>G: Chat completion for top candidates (batched)
+    G-->>AI: AI match outputs + explanations
+    AI-->>API: ranked matches[]
+  else no Groq
+    AI-->>API: ranked matches[] (rule-based only)
+  end
+  API-->>UI: 200 matches[]
+  UI-->>A: Render ranked list + insights
+
+------------------------------------------------------------
+5) Notifications retrieval (HTTP polling)
+
+sequenceDiagram
+  autonumber
+  participant U as Any User (Browser)
+  participant UI as React UI (client)
+  participant API as Express API
+  participant DB as DB
+
+  U->>UI: Open Notifications page / navbar bell
+  UI->>API: GET /api/notifications (Authorization: Bearer)
+  API->>API: authMiddleware
+  API->>DB: SELECT notifications WHERE role/user_id matches
+  DB-->>API: notifications[]
+  API-->>UI: 200 notifications[]
+
+  U->>UI: Mark one as read
+  UI->>API: PATCH /api/notifications/:id/read (Authorization: Bearer)
+  API->>DB: UPDATE notifications SET read=true
+  DB-->>API: ok
+  API-->>UI: 200
+
+------------------------------------------------------------
+6) Referral creation + status update (typical lifecycle)
+
+sequenceDiagram
+  autonumber
+  participant A as Admin (Browser)
+  participant UI as React UI (client)
+  participant API as Express API
+  participant DB as DB
+
+  A->>UI: Create referral slip for applicant/job
+  UI->>API: POST /api/referrals {...} (Authorization: Bearer)
+  API->>API: authMiddleware
+  API->>DB: INSERT referrals(referral_id, applicant_id, employer_id, vacancy_id, status='Pending', ...)
+  DB-->>API: inserted referral
+  API-->>UI: 200 referral
+
+  A->>UI: Update referral outcome
+  UI->>API: PATCH /api/referrals/:referralId/status {status, feedback?} (Authorization: Bearer)
+  API->>DB: UPDATE referrals SET status=?, feedback=?, updated_at=NOW
+  DB-->>API: updated referral
+  API-->>UI: 200 updated referral
+
+END

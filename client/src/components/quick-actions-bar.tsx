@@ -32,7 +32,7 @@ export function QuickActionsBar({ actions }: QuickActionsProps) {
       label: "Admin Access Requests",
       description: "Review pending admin account requests",
       icon: <Shield className="w-5 h-5" />,
-      href: "#access-requests",
+      href: "/admin/access-requests",
       priority: "high",
     },
     {
@@ -58,8 +58,8 @@ export function QuickActionsBar({ actions }: QuickActionsProps) {
     },
     {
       id: "reports",
-      label: "View Reports",
-      description: "Generate detailed system reports",
+      label: "Analytics",
+      description: "Explore dashboards and generate reports",
       icon: <BarChart3 className="w-5 h-5" />,
       href: "/admin/reports",
     },

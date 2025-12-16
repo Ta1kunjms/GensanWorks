@@ -1,13 +1,14 @@
 import { Notification } from "@shared/schema";
+import { authFetch } from "@/lib/auth";
 
 export async function fetchNotifications(): Promise<Notification[]> {
-  const res = await fetch('/api/notifications');
+  const res = await authFetch('/api/notifications');
   if (!res.ok) throw new Error('Failed to fetch notifications');
   return res.json();
 }
 
 export async function markNotificationRead(id: string): Promise<{ id: string; read: boolean }> {
-  const res = await fetch(`/api/notifications/${id}/read`, { method: 'PATCH' });
+  const res = await authFetch(`/api/notifications/${id}/read`, { method: 'PATCH' });
   if (!res.ok) throw new Error('Failed to mark notification read');
   return res.json();
 }

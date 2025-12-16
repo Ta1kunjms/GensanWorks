@@ -84,78 +84,95 @@ export default function EmployerDashboard() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-start">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">
-            Welcome back, {user?.company || user?.name}!
-          </h1>
-          <p className="text-slate-600 mt-1">Manage your job postings and applications</p>
-        </div>
-        <Button onClick={() => setLocation('/employer/jobs')} size="lg">
-          <Plus className="h-4 w-4 mr-2" />
-          Post New Job
-        </Button>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-sky-50 to-slate-100 text-slate-900">
+      <div className="relative isolate overflow-hidden">
+        <div className="relative mx-auto max-w-6xl px-6 py-10 space-y-8">
+          {/* Hero */}
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 md:p-8 shadow-xl">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-2">
+                <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Employer workspace</p>
+                {/* Title handled by TopNavbar. */}
+                <p className="text-3xl md:text-4xl font-semibold text-slate-900">
+                  Welcome back, {user?.company || user?.name}!
+                </p>
+                <p className="text-slate-600">Orchestrate your roles, applicants, and teams in one clean view.</p>
+                <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Live postings synced</span>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Realtime analytics</span>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Collaborative hiring</span>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Button variant="outline" className="border-slate-200 bg-white hover:bg-slate-50" onClick={() => setLocation('/employer/profile')}>
+                  <UserCheck className="h-4 w-4 mr-2" />
+                  Company profile
+                </Button>
+                <Button onClick={() => setLocation('/employer/jobs')} size="lg" className="bg-sky-600 text-white hover:bg-sky-500 shadow-md">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Post new job
+                </Button>
+              </div>
+            </div>
+          </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statsLoading ? (
-          <>
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-          </>
-        ) : (
-          <>
-            <StatsCard
-              title="Total Job Postings"
-              value={stats?.totalJobPostings || 0}
-              description={`${stats?.activeJobPostings || 0} active`}
-              icon={Briefcase}
-            />
-            <StatsCard
-              title="Total Applications"
-              value={stats?.totalApplications || 0}
-              description="From all job postings"
-              icon={Users}
-            />
-            <StatsCard
-              title="Pending Review"
-              value={stats?.pendingApplications || 0}
-              description="Awaiting your action"
-              icon={Clock}
-            />
-            <StatsCard
-              title="Hired Candidates"
-              value={stats?.hiredCandidates || 0}
-              description="Successfully hired"
-              icon={UserCheck}
-            />
-          </>
-        )}
-      </div>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {statsLoading ? (
+              <>
+                <Skeleton className="h-32" />
+                <Skeleton className="h-32" />
+                <Skeleton className="h-32" />
+                <Skeleton className="h-32" />
+              </>
+            ) : (
+              <>
+                <StatsCard
+                  title="Total Job Postings"
+                  value={stats?.totalJobPostings || 0}
+                  description={`${stats?.activeJobPostings || 0} active`}
+                  icon={Briefcase}
+                />
+                <StatsCard
+                  title="Total Applications"
+                  value={stats?.totalApplications || 0}
+                  description="From all job postings"
+                  icon={Users}
+                />
+                <StatsCard
+                  title="Pending Review"
+                  value={stats?.pendingApplications || 0}
+                  description="Awaiting your action"
+                  icon={Clock}
+                />
+                <StatsCard
+                  title="Hired Candidates"
+                  value={stats?.hiredCandidates || 0}
+                  description="Successfully hired"
+                  icon={UserCheck}
+                />
+              </>
+            )}
+          </div>
 
-      {/* Main Content Tabs */}
-      <Tabs defaultValue="applications" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="applications">Recent Applications</TabsTrigger>
-          <TabsTrigger value="jobs">Your Job Postings</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
-        </TabsList>
+          {/* Main Content Tabs */}
+          <Tabs defaultValue="applications" className="space-y-4">
+            <TabsList className="bg-white border border-slate-200 text-slate-700 shadow-sm">
+              <TabsTrigger value="applications">Recent Applications</TabsTrigger>
+              <TabsTrigger value="jobs">Your Job Postings</TabsTrigger>
+              <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            </TabsList>
 
-        {/* Applications Tab */}
-        <TabsContent value="applications" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Applications</CardTitle>
-              <CardDescription>
-                Review and manage applications to your job postings
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+            {/* Applications Tab */}
+            <TabsContent value="applications" className="space-y-4">
+              <Card className="border-slate-200 bg-white">
+                <CardHeader>
+                  <CardTitle className="text-xl font-semibold text-slate-900">Recent Applications</CardTitle>
+                  <CardDescription className="text-slate-600">
+                    Review and manage applications to your job postings
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
               {applicationsLoading ? (
                 <div className="space-y-3">
                   <Skeleton className="h-20" />
@@ -167,15 +184,15 @@ export default function EmployerDashboard() {
                   {applications.slice(0, 10).map((app: any) => (
                     <div
                       key={app.id}
-                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                      className="flex items-center justify-between p-4 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white transition-colors"
                     >
                       <div className="flex-1">
                         <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                            <Users className="h-5 w-5 text-blue-600" />
+                          <div className="h-10 w-10 rounded-xl bg-sky-100 border border-slate-200 flex items-center justify-center">
+                            <Users className="h-5 w-5 text-sky-700" />
                           </div>
                           <div>
-                            <p className="font-medium text-slate-900">{app.applicantName}</p>
+                            <p className="font-semibold text-slate-900">{app.applicantName}</p>
                             <p className="text-sm text-slate-600">Applied on {formatDate(app.createdAt)}</p>
                           </div>
                         </div>
@@ -205,20 +222,20 @@ export default function EmployerDashboard() {
                   </p>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-        {/* Jobs Tab */}
-        <TabsContent value="jobs" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Your Job Postings</CardTitle>
-              <CardDescription>
-                Manage your active and draft job postings
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+            {/* Jobs Tab */}
+            <TabsContent value="jobs" className="space-y-4">
+              <Card className="border-slate-200 bg-white">
+                <CardHeader>
+                  <CardTitle className="text-xl font-semibold text-slate-900">Your Job Postings</CardTitle>
+                  <CardDescription className="text-slate-600">
+                    Manage your active and draft job postings
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
               {jobsLoading ? (
                 <div className="space-y-3">
                   <Skeleton className="h-20" />
@@ -230,10 +247,10 @@ export default function EmployerDashboard() {
                   {jobs.map((job: any) => (
                     <div
                       key={job.id}
-                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                      className="flex items-center justify-between p-4 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white transition-colors"
                     >
                       <div className="flex-1">
-                        <h3 className="font-medium text-slate-900">{job.title}</h3>
+                        <h3 className="font-semibold text-slate-900">{job.title}</h3>
                         <div className="flex items-center gap-4 mt-1">
                           <p className="text-sm text-slate-600">{job.location}</p>
                           <Badge variant={job.status === 'active' ? 'default' : 'secondary'}>
@@ -261,18 +278,18 @@ export default function EmployerDashboard() {
                   </Button>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-        {/* Analytics Tab */}
-        <TabsContent value="analytics" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Application Status Overview</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
+            {/* Analytics Tab */}
+            <TabsContent value="analytics" className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card className="border-slate-200 bg-white">
+                  <CardHeader>
+                    <CardTitle>Application Status Overview</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-yellow-600" />
@@ -294,31 +311,33 @@ export default function EmployerDashboard() {
                   </div>
                   <span className="font-medium">{stats?.hiredCandidates || 0}</span>
                 </div>
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Quick Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Button className="w-full justify-start" variant="outline" onClick={() => setLocation('/employer/jobs')}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Post New Job
-                </Button>
-                <Button className="w-full justify-start" variant="outline" onClick={() => setLocation('/employer/applications')}>
-                  <Users className="h-4 w-4 mr-2" />
-                  Review Applications
-                </Button>
-                <Button className="w-full justify-start" variant="outline" onClick={() => setLocation('/employer/profile')}>
-                  <UserCheck className="h-4 w-4 mr-2" />
-                  Update Company Profile
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
+                <Card className="border-slate-200 bg-white">
+                  <CardHeader>
+                    <CardTitle>Quick Actions</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <Button className="w-full justify-start" variant="outline" onClick={() => setLocation('/employer/jobs')}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Post New Job
+                    </Button>
+                    <Button className="w-full justify-start" variant="outline" onClick={() => setLocation('/employer/applications')}>
+                      <Users className="h-4 w-4 mr-2" />
+                      Review Applications
+                    </Button>
+                    <Button className="w-full justify-start" variant="outline" onClick={() => setLocation('/employer/profile')}>
+                      <UserCheck className="h-4 w-4 mr-2" />
+                      Update Company Profile
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
     </div>
   );
 }

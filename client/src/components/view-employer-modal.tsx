@@ -8,46 +8,101 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { industryNameMap } from "@shared/schema";
-import { File, FileText, Eye } from "lucide-react";
-import { useState } from "react";
+import { File, FileText, Eye, Download } from "lucide-react";
+import { useState, useMemo } from "react";
 
 interface ViewEmployerModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   employer: any;
+  onEmployerUpdated?: () => void;
 }
 
 export function ViewEmployerModal({
   open,
   onOpenChange,
   employer,
+  onEmployerUpdated,
 }: ViewEmployerModalProps) {
   const [previewFile, setPreviewFile] = useState<{ name: string; type: string; url: string } | null>(null);
+  const requirementEntries = useMemo(() => buildRequirementEntries(employer?.requirements), [employer]);
   
   if (!employer) return null;
+
+  const getAccountStatusBadge = () => {
+    switch (employer.accountStatus) {
+      case "active":
+        return <Badge className="bg-green-500">Active</Badge>;
+      case "pending":
+        return <Badge className="bg-yellow-500">Pending Approval</Badge>;
+      case "rejected":
+        return <Badge variant="destructive">Rejected</Badge>;
+      default:
+        return <Badge variant="secondary">Unknown</Badge>;
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>{employer.establishmentName}</DialogTitle>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <DialogTitle className="truncate">{employer.establishmentName}</DialogTitle>
+                <p className="text-sm text-slate-600 truncate">
+                  {[employer.houseStreetVillage, employer.barangay, employer.municipality, employer.province]
+                    .filter(Boolean)
+                    .join(", ") || "—"}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {getAccountStatusBadge()}
+                <Badge variant={employer.createdBy === "admin" ? "default" : "secondary"}>
+                  {employer.createdBy === "admin" ? "Admin" : "Self-Registered"}
+                </Badge>
+                {employer.srsSubscriber && (
+                  <Badge variant="outline" className="bg-emerald-50 text-emerald-700">SRS Subscriber</Badge>
+                )}
+                {employer.archived && (
+                  <Badge variant="outline" className="bg-orange-50 text-orange-700">Archived</Badge>
+                )}
+              </div>
+            </div>
+          </div>
+          {employer.accountStatus === "rejected" && employer.rejectionReason && (
+            <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-800">
+                <span className="font-semibold">Rejection Reason:</span> {employer.rejectionReason}
+              </p>
+            </div>
+          )}
         </DialogHeader>
 
         <Tabs defaultValue="info" className="flex-1">
-          <TabsList className="grid w-full grid-cols-5 sticky top-0">
+          <TabsList className="grid w-full grid-cols-6 sticky top-0">
             <TabsTrigger value="info">Basic Info</TabsTrigger>
             <TabsTrigger value="address">Address</TabsTrigger>
             <TabsTrigger value="industry">Industry</TabsTrigger>
             <TabsTrigger value="geo">Geographic</TabsTrigger>
+            <TabsTrigger value="employment">Employment</TabsTrigger>
             <TabsTrigger value="docs">Documents</TabsTrigger>
           </TabsList>
 
           <div className="p-4 overflow-y-auto">
             {/* Basic Info Tab */}
             <TabsContent value="info" className="space-y-4">
-              <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase">ID</p>
-                <p className="text-sm font-mono text-slate-900">{employer.id}</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase">ID</p>
+                  <p className="text-sm font-mono text-slate-900">{employer.id}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 uppercase">Created By</p>
+                  <Badge variant={employer.createdBy === "admin" ? "default" : "secondary"}>
+                    {employer.createdBy === "admin" ? "Admin" : "Self-Registered"}
+                  </Badge>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -63,36 +118,42 @@ export function ViewEmployerModal({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase">Paid Employees</p>
-                  <p className="text-2xl font-bold text-blue-600">{employer.numberOfPaidEmployees || 0}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase">Vacant Positions</p>
-                  <p className="text-2xl font-bold text-green-600">{employer.numberOfVacantPositions || 0}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase">SRS Subscriber</p>
-                  <Badge variant={employer.srsSubscriber ? "default" : "secondary"}>
-                    {employer.srsSubscriber ? "Yes" : "No"}
-                  </Badge>
-                </div>
-                <div>
                   <p className="text-xs font-semibold text-slate-500 uppercase">Manpower Agency</p>
                   <Badge variant={employer.isManpowerAgency ? "default" : "secondary"}>
                     {employer.isManpowerAgency ? "Yes" : "No"}
                   </Badge>
                 </div>
+                {employer.isManpowerAgency && (
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase">DOLE Certification No.</p>
+                    <p className="text-sm text-slate-900">{employer.doleCertificationNumber || "N/A"}</p>
+                  </div>
+                )}
               </div>
 
-              {employer.isManpowerAgency && (
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase">DOLE Certification</p>
-                  <p className="text-sm text-slate-900">{employer.doleCertificationNumber || "N/A"}</p>
-                </div>
-              )}
+              <div className="border-t pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-slate-900 mb-3">Contact Person</h4>
+                {employer.contactPerson && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase">Name</p>
+                      <p className="text-sm text-slate-900">{employer.contactPerson.personName || "N/A"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase">Designation</p>
+                      <p className="text-sm text-slate-900">{employer.contactPerson.designation || "N/A"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase">Email</p>
+                      <p className="text-sm text-slate-900">{employer.contactPerson.email || "N/A"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase">Contact Number</p>
+                      <p className="text-sm text-slate-900">{employer.contactPerson.contactNumber || "N/A"}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </TabsContent>
 
             {/* Address Tab */}
@@ -157,30 +218,83 @@ export function ViewEmployerModal({
               </div>
             </TabsContent>
 
+            {/* Employment Data Tab */}
+            <TabsContent value="employment" className="space-y-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 mb-3">Employment Statistics (SRS Form 2)</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase">No. of Paid Employees</p>
+                    <p className="text-2xl font-bold text-blue-600">{employer.numberOfPaidEmployees || 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase">No. of Vacant Positions</p>
+                    <p className="text-2xl font-bold text-green-600">{employer.numberOfVacantPositions || 0}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="border-t pt-4 mt-4">
+                <h4 className="text-sm font-semibold text-slate-900 mb-3">SRS Subscription</h4>
+                <div className="flex items-center gap-3">
+                  <Badge variant={employer.srsSubscriber ? "default" : "secondary"}>
+                    {employer.srsSubscriber ? "SRS Subscriber" : "Not Subscribed"}
+                  </Badge>
+                  {employer.subscriptionStatus && (
+                    <span className="text-sm text-slate-600">Status: {employer.subscriptionStatus}</span>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+
             {/* Geographic Identification Tab */}
             <TabsContent value="geo" className="space-y-4">
-              <div className="border-b pb-4">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 mb-3">Geographic Identification (SRS Form 2)</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase">Province</p>
+                    <p className="text-sm text-slate-900">{employer.province || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase">Municipality/City</p>
+                    <p className="text-sm text-slate-900">{employer.municipality || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase">Barangay</p>
+                    <p className="text-sm text-slate-900">{employer.barangay || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase">Geographic Code</p>
+                    <p className="text-sm font-mono text-slate-900">{employer.geographicCode || "N/A"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase">Tel. No.</p>
+                    <p className="text-sm text-slate-900">{employer.telNumber || "N/A"}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="border-t pt-4 mt-4">
                 <h4 className="text-sm font-semibold text-slate-900 mb-3">Barangay Officials</h4>
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase">Chairperson Name</p>
-                      <p className="text-sm text-slate-900">{employer.chairpersonName || "N/A"}</p>
+                      <p className="text-xs font-semibold text-slate-500 uppercase">Bgy Chairperson</p>
+                      <p className="text-sm text-slate-900">{employer.barangayChairperson || "N/A"}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase">Chairperson Contact</p>
-                      <p className="text-sm text-slate-900">{employer.chairpersonContact || "N/A"}</p>
+                      <p className="text-xs font-semibold text-slate-500 uppercase">Chairperson Tel. No.</p>
+                      <p className="text-sm text-slate-900">{employer.chairpersonTelNumber || "N/A"}</p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase">Secretary Name</p>
-                      <p className="text-sm text-slate-900">{employer.secretaryName || "N/A"}</p>
+                      <p className="text-xs font-semibold text-slate-500 uppercase">Bgy Secretary</p>
+                      <p className="text-sm text-slate-900">{employer.barangaySecretary || "N/A"}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase">Secretary Contact</p>
-                      <p className="text-sm text-slate-900">{employer.secretaryContact || "N/A"}</p>
+                      <p className="text-xs font-semibold text-slate-500 uppercase">Secretary Tel. No.</p>
+                      <p className="text-sm text-slate-900">{employer.secretaryTelNumber || "N/A"}</p>
                     </div>
                   </div>
                 </div>
@@ -229,51 +343,35 @@ export function ViewEmployerModal({
                 <div className="border rounded-lg p-3 bg-slate-50">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <FileText className="w-5 h-5 text-blue-600" />
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">SRS Form</p>
-                        <p className="text-xs text-slate-600">Main establishment listing form</p>
-                      </div>
-                    </div>
-                    {employer.srsFormFile && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setPreviewFile({ 
-                          name: employer.srsFormFile?.name || "SRS Form",
-                          type: employer.srsFormFile?.type || "application/pdf",
-                          url: employer.srsFormFile?.url || ""
-                        })}
-                      >
-                        <Eye className="w-4 h-4 mr-2" />
-                        View
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="border rounded-lg p-3 bg-slate-50">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
                       <File className="w-5 h-5 text-green-600" />
                       <div>
                         <p className="text-sm font-semibold text-slate-900">Business Permit</p>
                         <p className="text-xs text-slate-600">Photocopy of business permit</p>
                       </div>
                     </div>
-                    {employer.businessPermitFile && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setPreviewFile({ 
-                          name: employer.businessPermitFile?.name || "Business Permit",
-                          type: employer.businessPermitFile?.type || "application/pdf",
-                          url: employer.businessPermitFile?.url || ""
-                        })}
-                      >
-                        <Eye className="w-4 h-4 mr-2" />
-                        View
-                      </Button>
+                    {employer.businessPermitFile ? (
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => window.open(employer.businessPermitFile?.path || employer.businessPermitFile?.url, "_blank")}
+                        >
+                          <Eye className="w-4 h-4 mr-2" />
+                          View
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          asChild
+                        >
+                          <a href={employer.businessPermitFile?.path || employer.businessPermitFile?.url} download={employer.businessPermitFile?.name}>
+                            <Download className="w-4 h-4 mr-2" />
+                            Download
+                          </a>
+                        </Button>
+                      </div>
+                    ) : (
+                      <Badge variant="secondary">Not uploaded</Badge>
                     )}
                   </div>
                 </div>
@@ -287,19 +385,29 @@ export function ViewEmployerModal({
                         <p className="text-xs text-slate-600">Photocopy of BIR form</p>
                       </div>
                     </div>
-                    {employer.bir2303File && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setPreviewFile({ 
-                          name: employer.bir2303File?.name || "BIR 2303",
-                          type: employer.bir2303File?.type || "application/pdf",
-                          url: employer.bir2303File?.url || ""
-                        })}
-                      >
-                        <Eye className="w-4 h-4 mr-2" />
-                        View
-                      </Button>
+                    {employer.bir2303File ? (
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => window.open(employer.bir2303File?.path || employer.bir2303File?.url, "_blank")}
+                        >
+                          <Eye className="w-4 h-4 mr-2" />
+                          View
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          asChild
+                        >
+                          <a href={employer.bir2303File?.path || employer.bir2303File?.url} download={employer.bir2303File?.name}>
+                            <Download className="w-4 h-4 mr-2" />
+                            Download
+                          </a>
+                        </Button>
+                      </div>
+                    ) : (
+                      <Badge variant="secondary">Not uploaded</Badge>
                     )}
                   </div>
                 </div>
@@ -310,22 +418,32 @@ export function ViewEmployerModal({
                       <File className="w-5 h-5 text-purple-600" />
                       <div>
                         <p className="text-sm font-semibold text-slate-900">Company Profile</p>
-                        <p className="text-xs text-slate-600">Organization profile/background</p>
+                        <p className="text-xs text-slate-600">Company background and information</p>
                       </div>
                     </div>
-                    {employer.companyProfileFile && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setPreviewFile({ 
-                          name: employer.companyProfileFile?.name || "Company Profile",
-                          type: employer.companyProfileFile?.type || "application/pdf",
-                          url: employer.companyProfileFile?.url || ""
-                        })}
-                      >
-                        <Eye className="w-4 h-4 mr-2" />
-                        View
-                      </Button>
+                    {employer.companyProfileFile ? (
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => window.open(employer.companyProfileFile?.path || employer.companyProfileFile?.url, "_blank")}
+                        >
+                          <Eye className="w-4 h-4 mr-2" />
+                          View
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          asChild
+                        >
+                          <a href={employer.companyProfileFile?.path || employer.companyProfileFile?.url} download={employer.companyProfileFile?.name}>
+                            <Download className="w-4 h-4 mr-2" />
+                            Download
+                          </a>
+                        </Button>
+                      </div>
+                    ) : (
+                      <Badge variant="secondary">Not uploaded</Badge>
                     )}
                   </div>
                 </div>
@@ -340,25 +458,37 @@ export function ViewEmployerModal({
                           <p className="text-xs text-slate-600">D.O. 174 Certification</p>
                         </div>
                       </div>
-                      {employer.doleCertificationFile && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setPreviewFile({ 
-                            name: employer.doleCertificationFile?.name || "DOLE Certification",
-                            type: employer.doleCertificationFile?.type || "application/pdf",
-                            url: employer.doleCertificationFile?.url || ""
-                          })}
-                        >
-                          <Eye className="w-4 h-4 mr-2" />
-                          View
-                        </Button>
+                      {employer.doleCertificationFile ? (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => window.open(employer.doleCertificationFile?.path || employer.doleCertificationFile?.url, "_blank")}
+                          >
+                            <Eye className="w-4 h-4 mr-2" />
+                            View
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            asChild
+                          >
+                            <a href={employer.doleCertificationFile?.path || employer.doleCertificationFile?.url} download={employer.doleCertificationFile?.name}>
+                              <Download className="w-4 h-4 mr-2" />
+                              Download
+                            </a>
+                          </Button>
+                        </div>
+                      ) : (
+                        <Badge variant="secondary">Not uploaded</Badge>
                       )}
                     </div>
                   </div>
                 )}
               </div>
             </TabsContent>
+
+
           </div>
         </Tabs>
 
@@ -397,4 +527,16 @@ export function ViewEmployerModal({
       </DialogContent>
     </Dialog>
   );
+}
+
+function buildRequirementEntries(requirements?: Record<string, any>) {
+  if (!requirements) return [] as Array<{ key: string; label: string; status: string; fileUrl?: string; submitted?: boolean; required?: boolean; }>;
+  return Object.entries(requirements).map(([key, value]) => {
+    const label = (value as any)?.label || key.replace(/([A-Z])/g, " $1").replace(/_/g, " ").trim();
+    const submitted = Boolean((value as any)?.submitted);
+    const required = (value as any)?.required !== false;
+    const status = submitted ? "Submitted" : required ? "Pending" : "Optional";
+    const fileUrl = (value as any)?.fileUrl || (value as any)?.url || (value as any)?.file;
+    return { key, label, status, fileUrl, submitted, required };
+  });
 }

@@ -51,7 +51,7 @@ export default function EmployerUseCases() {
         <div className="bg-white rounded-lg shadow-sm p-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Employer Use Case Descriptions</h1>
+              <p className="text-3xl font-bold text-gray-900">Employer Use Case Descriptions</p>
               <p className="text-gray-600 mt-2">Comprehensive list of employer workflows</p>
             </div>
             <div className="flex gap-3">

@@ -4,10 +4,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, Clock, Mail, Phone, Building2, ArrowRight, Key } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, Mail, Phone, Building2, ArrowRight, Key, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { EditAdminUserModal } from "@/components/edit-admin-user-modal";
+import { AdminPageHeader } from "@/components/admin/page-header";
+import { AdminStatCard, AdminStatCardSkeleton } from "@/components/admin/stat-card";
 
 interface AdminAccessRequest {
   id: string;
@@ -33,9 +35,13 @@ export default function AdminAccessRequests() {
 
   // Fetch access requests
   const { data: requests, isLoading, refetch } = useQuery<AdminAccessRequest[]>({
-    queryKey: ["/api/admin/access-requests"],
+    queryKey: ["/api/admin/access-requests", filter],
     queryFn: async () => {
-      const res = await fetch("/api/admin/access-requests", {
+      let url = "/api/admin/access-requests";
+      if (filter === "approved") {
+        url += "?status=approved";
+      }
+      const res = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -45,10 +51,55 @@ export default function AdminAccessRequests() {
     },
   });
 
-  // Filter requests
-  const filteredRequests = requests?.filter(req =>
-    filter === "all" ? true : req.status === filter
-  ) || [];
+  // Filter requests (client-side for all, pending, rejected)
+  const filteredRequests = filter === "approved"
+    ? requests || []
+    : (requests?.filter(req => filter === "all" ? true : req.status === filter) || []);
+
+  const statusSummary = (requests || []).reduce(
+    (acc, req) => {
+      acc[req.status] += 1;
+      return acc;
+    },
+    { pending: 0, approved: 0, rejected: 0 }
+  );
+
+  const totalRequests = requests?.length ?? 0;
+
+  const requestStatCards = [
+    {
+      key: "pending",
+      title: "Pending Reviews",
+      value: statusSummary.pending,
+      helper: "Awaiting PESO approval",
+      variant: "amber" as const,
+      icon: <Clock className="w-5 h-5" />,
+    },
+    {
+      key: "approved",
+      title: "Approved",
+      value: statusSummary.approved,
+      helper: "Activated admin users",
+      variant: "emerald" as const,
+      icon: <CheckCircle2 className="w-5 h-5" />,
+    },
+    {
+      key: "rejected",
+      title: "Rejected",
+      value: statusSummary.rejected,
+      helper: "Declined or expired",
+      variant: "red" as const,
+      icon: <XCircle className="w-5 h-5" />,
+    },
+    {
+      key: "total",
+      title: "Total Requests",
+      value: totalRequests,
+      helper: "Lifetime submissions",
+      variant: "blue" as const,
+      icon: <Key className="w-5 h-5" />,
+    },
+  ];
 
   // Handle approve
   const handleApprove = async (id: string) => {
@@ -124,15 +175,46 @@ export default function AdminAccessRequests() {
     <div className="flex-1 overflow-auto">
       <div className="bg-gradient-to-br from-slate-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 min-h-screen">
         <div className="container mx-auto p-6 space-y-6 max-w-[1200px]">
-          {/* Header */}
-          <div className="space-y-2">
-            <h1 className="text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
-              Admin Access Requests
-            </h1>
-            <p className="text-slate-600 dark:text-slate-400">
-              Manage and review admin access requests from users
-            </p>
-          </div>
+          <AdminPageHeader
+            badge="Security"
+            title="Admin Access Requests"
+            description="Manage and review elevated access before it reaches production systems."
+            icon={<Key className="w-5 h-5 text-amber-500" />}
+            actions={(
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => refetch()}
+                disabled={isLoading}
+              >
+                <RefreshCw className="w-4 h-4" />
+                Refresh Queue
+              </Button>
+            )}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+              {isLoading ? (
+                <>
+                  <AdminStatCardSkeleton />
+                  <AdminStatCardSkeleton />
+                  <AdminStatCardSkeleton />
+                  <AdminStatCardSkeleton />
+                </>
+              ) : (
+                requestStatCards.map((card) => (
+                  <AdminStatCard
+                    key={card.key}
+                    title={card.title}
+                    value={card.value}
+                    helper={card.helper}
+                    variant={card.variant}
+                    icon={card.icon}
+                  />
+                ))
+              )}
+            </div>
+          </AdminPageHeader>
 
           {/* Filter Tabs */}
           <div className="flex gap-2 flex-wrap">

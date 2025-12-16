@@ -25,12 +25,17 @@ import { useToast } from "@/hooks/use-toast";
 import { industryNameMap } from "@shared/schema";
 import type { EmployerCreate } from "@shared/schema";
 import { Upload, X, HelpCircle } from "lucide-react";
+import { authFetch } from "@/lib/auth";
+import { DEFAULT_MUNICIPALITY, DEFAULT_PROVINCE } from "@/lib/locations";
+import { useFieldErrors, type FieldErrors } from "@/lib/field-errors";
 
 interface AddEmployerModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onEmployerAdded?: (employer: any) => void;
 }
+
+const getTodayIsoDate = () => new Date().toISOString().split("T")[0];
 
 // Helper component for labels with tooltips
 const LabelWithTooltip = ({ label, tooltip, required }: { label: string; tooltip?: string; required?: boolean }) => (
@@ -51,6 +56,34 @@ const LabelWithTooltip = ({ label, tooltip, required }: { label: string; tooltip
   </div>
 );
 
+const createInitialContactPerson = (): EmployerCreate["contactPerson"] => ({
+  personName: "",
+  designation: "",
+  email: "",
+  contactNumber: "",
+});
+
+const createInitialFormState = (): Partial<EmployerCreate> => ({
+  numberOfPaidEmployees: 0,
+  numberOfVacantPositions: 0,
+  industryType: [],
+  srsSubscriber: false,
+  isManpowerAgency: false,
+  municipality: DEFAULT_MUNICIPALITY,
+  province: DEFAULT_PROVINCE,
+  preparedByName: "",
+  preparedByDesignation: "",
+  dateAccomplished: "",
+  contactPerson: createInitialContactPerson(),
+  geographicCode: "",
+  telNumber: "",
+  barangayChairperson: "",
+  chairpersonTelNumber: "",
+  barangaySecretary: "",
+  secretaryTelNumber: "",
+  remarks: "",
+});
+
 export function AddEmployerModal({
   open,
   onOpenChange,
@@ -59,24 +92,31 @@ export function AddEmployerModal({
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
-  const [formData, setFormData] = useState<Partial<EmployerCreate>>({
-    numberOfPaidEmployees: 0,
-    numberOfVacantPositions: 0,
-    industryType: [],
-    srsSubscriber: false,
-    isManpowerAgency: false,
-    preparedByName: "",
-    preparedByDesignation: "",
-    dateAccomplished: "",
-  });
+  const [formData, setFormData] = useState<Partial<EmployerCreate>>(() => createInitialFormState());
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, File | null>>({
-    srsFormFile: null,
     businessPermitFile: null,
     bir2303File: null,
     companyProfileFile: null,
     doleCertificationFile: null,
   });
   const [industrySearchTerm, setIndustrySearchTerm] = useState("");
+
+  type EmployerRequiredField =
+    | "establishmentName"
+    | "houseStreetVillage"
+    | "municipality"
+    | "province"
+    | "companyTIN"
+    | "contactPersonName"
+    | "contactPersonEmail"
+    | "contactPersonContactNumber"
+    | "preparedByName"
+    | "preparedByDesignation"
+    | "industryType"
+    ;
+
+  const { fieldErrors, clearFieldError, setErrorsAndFocus, setFieldErrors } =
+    useFieldErrors<EmployerRequiredField>();
 
   // Auto-save form data to localStorage
   useEffect(() => {
@@ -92,7 +132,21 @@ export function AddEmployerModal({
     const draft = localStorage.getItem("employer_form_draft");
     if (draft) {
       try {
-        setFormData(JSON.parse(draft));
+        const parsed = JSON.parse(draft);
+        const merged = {
+          ...createInitialFormState(),
+          ...parsed,
+          contactPerson: {
+            ...createInitialContactPerson(),
+            ...(parsed.contactPerson || {}),
+          },
+        } as Partial<EmployerCreate>;
+
+        setFormData({
+          ...merged,
+          municipality: merged.municipality?.trim() ? merged.municipality : DEFAULT_MUNICIPALITY,
+          province: merged.province?.trim() ? merged.province : DEFAULT_PROVINCE,
+        });
       } catch (e) {
         console.error("Failed to load form draft:", e);
       }
@@ -119,6 +173,33 @@ export function AddEmployerModal({
       ...prev,
       [field]: value,
     }));
+
+    if (
+      field === "establishmentName" ||
+      field === "houseStreetVillage" ||
+      field === "municipality" ||
+      field === "province" ||
+      field === "companyTIN" ||
+      field === "preparedByName" ||
+      field === "preparedByDesignation"
+    ) {
+      clearFieldError(field as EmployerRequiredField);
+    }
+  };
+
+  const handleContactPersonChange = (field: keyof EmployerCreate["contactPerson"], value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      contactPerson: {
+        ...createInitialContactPerson(),
+        ...(prev.contactPerson || {}),
+        [field]: value,
+      },
+    }));
+
+    if (field === "personName") clearFieldError("contactPersonName");
+    if (field === "email") clearFieldError("contactPersonEmail");
+    if (field === "contactNumber") clearFieldError("contactPersonContactNumber");
   };
 
   const handleIndustryToggle = (code: string) => {
@@ -131,49 +212,82 @@ export function AddEmployerModal({
           : [...industries, code],
       };
     });
+
+    clearFieldError("industryType");
   };
 
   const validateStep1 = () => {
-    if (!formData.establishmentName || !formData.houseStreetVillage || !formData.municipality || !formData.province) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required establishment fields",
-        variant: "destructive",
-      });
+    const nextErrors: FieldErrors<EmployerRequiredField> = {};
+
+    if (!String(formData.establishmentName || "").trim()) nextErrors.establishmentName = "Establishment name is required";
+    if (!String(formData.houseStreetVillage || "").trim()) nextErrors.houseStreetVillage = "Address is required";
+    if (!String(formData.municipality || "").trim()) nextErrors.municipality = "Municipality/City is required";
+    if (!String(formData.province || "").trim()) nextErrors.province = "Province is required";
+
+    if (!String(formData.contactPerson?.personName || "").trim()) {
+      nextErrors.contactPersonName = "Primary contact person is required";
+    }
+
+    const contactEmail = String(formData.contactPerson?.email || "").trim();
+    if (contactEmail && !validateEmail(contactEmail)) nextErrors.contactPersonEmail = "Invalid email format";
+
+    const contactNumber = String(formData.contactPerson?.contactNumber || "").trim();
+    if (contactNumber && !validatePhoneNumber(contactNumber)) {
+      nextErrors.contactPersonContactNumber = "Invalid phone format";
+    }
+
+    if (Object.keys(nextErrors).length) {
+      setErrorsAndFocus(nextErrors);
       return false;
     }
+
+    setFieldErrors((prev) => {
+      const cleaned = { ...prev };
+      delete cleaned.establishmentName;
+      delete cleaned.houseStreetVillage;
+      delete cleaned.municipality;
+      delete cleaned.province;
+      delete cleaned.contactPersonName;
+      delete cleaned.contactPersonEmail;
+      delete cleaned.contactPersonContactNumber;
+      return cleaned;
+    });
+
     return true;
   };
 
   const validateStep2 = () => {
-    if (!formData.preparedByName || !formData.preparedByDesignation || !formData.dateAccomplished) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in prepared by information and date",
-        variant: "destructive",
-      });
-      return false;
-    }
+    const nextErrors: FieldErrors<EmployerRequiredField> = {};
+
+    if (!String(formData.preparedByName || "").trim()) nextErrors.preparedByName = "Name is required";
+    if (!String(formData.preparedByDesignation || "").trim()) nextErrors.preparedByDesignation = "Designation is required";
     if (!formData.industryType || formData.industryType.length === 0) {
-      toast({
-        title: "Validation Error",
-        description: "Please select at least one industry type",
-        variant: "destructive",
-      });
+      nextErrors.industryType = "Select at least one industry type";
+    }
+
+    if (Object.keys(nextErrors).length) {
+      setErrorsAndFocus(nextErrors);
       return false;
     }
+
+    setFieldErrors((prev) => {
+      const cleaned = { ...prev };
+      delete cleaned.preparedByName;
+      delete cleaned.preparedByDesignation;
+      delete cleaned.industryType;
+      return cleaned;
+    });
+
     return true;
   };
 
   const validateStep3 = () => {
-    if (!uploadedFiles.srsFormFile) {
-      toast({
-        title: "Validation Error",
-        description: "SRS Form file is required. Please upload the SRS Form document.",
-        variant: "destructive",
-      });
+    const nextErrors: FieldErrors<EmployerRequiredField> = {};
+    if (Object.keys(nextErrors).length) {
+      setErrorsAndFocus(nextErrors);
       return false;
     }
+
     return true;
   };
 
@@ -185,6 +299,11 @@ export function AddEmployerModal({
     return phoneRegex.test(phone.replace(/[\s-]/g, ""));
   };
 
+  const validateEmail = (email: string): boolean => {
+    if (!email) return true;
+    return /[^\s@]+@[^\s@]+\.[^\s@]+/.test(email);
+  };
+
   const validateTIN = (tin: string): boolean => {
     if (!tin) return true; // Optional field
     // Philippine TIN format: 9 digits
@@ -194,7 +313,7 @@ export function AddEmployerModal({
 
   const checkForDuplicates = async (): Promise<boolean> => {
     try {
-      const response = await fetch("/api/employers/check-duplicate", {
+      const response = await authFetch("/api/employers/check-duplicate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -206,11 +325,16 @@ export function AddEmployerModal({
       const data = await response.json();
       
       if (data.isDuplicate) {
-        toast({
-          title: "Duplicate Found",
-          description: data.message,
-          variant: "destructive",
-        });
+        const message = String(data.message || "A duplicate employer was found.").trim();
+        const nextErrors: FieldErrors<EmployerRequiredField> = {
+          establishmentName: message,
+        };
+
+        if (String(formData.companyTIN || "").trim()) {
+          nextErrors.companyTIN = message;
+        }
+
+        setErrorsAndFocus(nextErrors);
         return false;
       }
       
@@ -231,11 +355,10 @@ export function AddEmployerModal({
 
   const getFileName = (fieldName: string) => {
     const labelMap: Record<string, string> = {
-      srsFormFile: "SRS Form",
       businessPermitFile: "Business Permit",
       bir2303File: "BIR 2303",
       companyProfileFile: "Company Profile",
-      doleCertificationFile: "DOLE Certification",
+      doleCertificationFile: "DOLE Accreditation",
     };
     return labelMap[fieldName] || fieldName;
   };
@@ -256,21 +379,70 @@ export function AddEmployerModal({
         return;
       }
 
-      const response = await fetch("/api/employers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
+      // Step 1: Upload files first
+      let fileMetadata: Record<string, any> = {};
+      const hasFiles = Object.values(uploadedFiles).some(file => file !== null);
 
-      if (!response.ok) {
-        throw new Error("Failed to add employer");
+      if (hasFiles) {
+        const formDataFiles = new FormData();
+        Object.entries(uploadedFiles).forEach(([fieldName, file]) => {
+          if (file) {
+            formDataFiles.append(fieldName, file);
+          }
+        });
+
+        const uploadResponse = await authFetch("/api/upload/employer-docs", {
+          method: "POST",
+          body: formDataFiles,
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error("Failed to upload files");
+        }
+
+        const uploadResult = await uploadResponse.json();
+        fileMetadata = uploadResult.files || {};
       }
 
-      const responseData = await response.json();
+      // Step 2: Submit employer data with file metadata
+      const payload = {
+        ...formData,
+        dateAccomplished: getTodayIsoDate(),
+        industryCodes: Array.from(new Set(formData.industryType || [])),
+        // Admin-created employers are automatically active
+        accountStatus: "active",
+        createdBy: "admin",
+        // Merge file metadata into payload
+        ...(fileMetadata.businessPermitFile && { 
+          businessPermitFile: JSON.stringify(fileMetadata.businessPermitFile) 
+        }),
+        ...(fileMetadata.bir2303File && { 
+          bir2303File: JSON.stringify(fileMetadata.bir2303File) 
+        }),
+        ...(fileMetadata.companyProfileFile && { 
+          companyProfileFile: JSON.stringify(fileMetadata.companyProfileFile) 
+        }),
+        ...(fileMetadata.doleCertificationFile && { 
+          doleCertificationFile: JSON.stringify(fileMetadata.doleCertificationFile) 
+        }),
+      };
+
+      const response = await authFetch("/api/employers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const responseData = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const serverMessage = responseData?.error?.message || responseData?.message || "Failed to add employer";
+        throw new Error(serverMessage);
+      }
 
       toast({
         title: "Success",
-        description: "Employer added successfully",
+        description: "Employer added successfully with documents",
       });
 
       onOpenChange(false);
@@ -278,12 +450,12 @@ export function AddEmployerModal({
       clearFormDraft(); // Clear saved draft after successful submission
 
       // Reset form
-      setFormData({
-        numberOfPaidEmployees: 0,
-        numberOfVacantPositions: 0,
-        industryType: [],
-        srsSubscriber: false,
-        isManpowerAgency: false,
+      setFormData(createInitialFormState());
+      setUploadedFiles({
+        businessPermitFile: null,
+        bir2303File: null,
+        companyProfileFile: null,
+        doleCertificationFile: null,
       });
       setCurrentStep(1);
     } catch (error: any) {
@@ -334,20 +506,28 @@ export function AddEmployerModal({
               <div>
                 <Label>Name of Establishment *</Label>
                 <Input
+                  aria-invalid={!!fieldErrors.establishmentName}
                   value={formData.establishmentName || ""}
                   onChange={(e) => handleInputChange("establishmentName", e.target.value)}
                   placeholder="Company/Establishment name"
                 />
+                {fieldErrors.establishmentName && (
+                  <p className="mt-1 text-xs text-destructive">{fieldErrors.establishmentName}</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>House No./Street/Village *</Label>
                   <Input
+                    aria-invalid={!!fieldErrors.houseStreetVillage}
                     value={formData.houseStreetVillage || ""}
                     onChange={(e) => handleInputChange("houseStreetVillage", e.target.value)}
                     placeholder="Address"
                   />
+                  {fieldErrors.houseStreetVillage && (
+                    <p className="mt-1 text-xs text-destructive">{fieldErrors.houseStreetVillage}</p>
+                  )}
                 </div>
                 <div>
                   <Label>Barangay</Label>
@@ -368,18 +548,84 @@ export function AddEmployerModal({
                 <div>
                   <Label>Municipality/City *</Label>
                   <Input
+                    aria-invalid={!!fieldErrors.municipality}
                     value={formData.municipality || ""}
                     onChange={(e) => handleInputChange("municipality", e.target.value)}
                     placeholder="Municipality/City"
                   />
+                  {fieldErrors.municipality && <p className="mt-1 text-xs text-destructive">{fieldErrors.municipality}</p>}
                 </div>
                 <div>
                   <Label>Province *</Label>
                   <Input
+                    aria-invalid={!!fieldErrors.province}
                     value={formData.province || ""}
                     onChange={(e) => handleInputChange("province", e.target.value)}
                     placeholder="Province"
                   />
+                  {fieldErrors.province && <p className="mt-1 text-xs text-destructive">{fieldErrors.province}</p>}
+                </div>
+              </div>
+
+              <div className="border-t pt-4 mt-4">
+                <h3 className="font-semibold text-base mb-3">GEOGRAPHIC IDENTIFICATION</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Geographic Code</Label>
+                    <Input
+                      value={formData.geographicCode || ""}
+                      onChange={(e) => handleInputChange("geographicCode", e.target.value)}
+                      placeholder="Enter geographic code"
+                    />
+                  </div>
+                  <div>
+                    <Label>Tel. No.</Label>
+                    <Input
+                      value={formData.telNumber || ""}
+                      onChange={(e) => handleInputChange("telNumber", e.target.value)}
+                      placeholder="Telephone number"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t pt-4 mt-4">
+                <h3 className="font-semibold text-base mb-3">BARANGAY OFFICIALS</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Barangay Chairperson</Label>
+                    <Input
+                      value={formData.barangayChairperson || ""}
+                      onChange={(e) => handleInputChange("barangayChairperson", e.target.value)}
+                      placeholder="Chairperson name"
+                    />
+                  </div>
+                  <div>
+                    <Label>Chairperson Tel. No.</Label>
+                    <Input
+                      value={formData.chairpersonTelNumber || ""}
+                      onChange={(e) => handleInputChange("chairpersonTelNumber", e.target.value)}
+                      placeholder="Telephone number"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <Label>Barangay Secretary</Label>
+                    <Input
+                      value={formData.barangaySecretary || ""}
+                      onChange={(e) => handleInputChange("barangaySecretary", e.target.value)}
+                      placeholder="Secretary name"
+                    />
+                  </div>
+                  <div>
+                    <Label>Secretary Tel. No.</Label>
+                    <Input
+                      value={formData.secretaryTelNumber || ""}
+                      onChange={(e) => handleInputChange("secretaryTelNumber", e.target.value)}
+                      placeholder="Telephone number"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -406,6 +652,80 @@ export function AddEmployerModal({
                     onChange={(e) => handleInputChange("email", e.target.value)}
                     placeholder="Email address"
                   />
+                </div>
+              </div>
+
+              <div className="border-t pt-4 mt-4">
+                <h3 className="font-semibold text-lg mb-3">PRIMARY CONTACT PERSON</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Name *</Label>
+                    <Input
+                      aria-invalid={!!fieldErrors.contactPersonName}
+                      value={formData.contactPerson?.personName || ""}
+                      onChange={(e) => handleContactPersonChange("personName", e.target.value)}
+                      placeholder="Primary contact name"
+                    />
+                    {fieldErrors.contactPersonName && (
+                      <p className="mt-1 text-xs text-destructive">{fieldErrors.contactPersonName}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label>Designation</Label>
+                    <Input
+                      value={formData.contactPerson?.designation || ""}
+                      onChange={(e) => handleContactPersonChange("designation", e.target.value)}
+                      placeholder="Role/designation"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <Label>Email</Label>
+                    <div>
+                      <Input
+                        type="email"
+                        value={formData.contactPerson?.email || ""}
+                        onChange={(e) => handleContactPersonChange("email", e.target.value)}
+                        placeholder="contact@example.com"
+                        aria-invalid={
+                          !!fieldErrors.contactPersonEmail ||
+                          (!!formData.contactPerson?.email && !validateEmail(formData.contactPerson.email))
+                        }
+                      />
+                      {fieldErrors.contactPersonEmail ? (
+                        <p className="mt-1 text-xs text-destructive">{fieldErrors.contactPersonEmail}</p>
+                      ) : (
+                        formData.contactPerson?.email &&
+                        !validateEmail(formData.contactPerson.email) && (
+                          <p className="mt-1 text-xs text-destructive">Invalid email format</p>
+                        )
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Contact Number</Label>
+                    <div>
+                      <Input
+                        value={formData.contactPerson?.contactNumber || ""}
+                        onChange={(e) => handleContactPersonChange("contactNumber", e.target.value)}
+                        placeholder="09123456789 or +639123456789"
+                        aria-invalid={
+                          !!fieldErrors.contactPersonContactNumber ||
+                          (!!formData.contactPerson?.contactNumber &&
+                            !validatePhoneNumber(formData.contactPerson.contactNumber))
+                        }
+                      />
+                      {fieldErrors.contactPersonContactNumber ? (
+                        <p className="mt-1 text-xs text-destructive">{fieldErrors.contactPersonContactNumber}</p>
+                      ) : (
+                        formData.contactPerson?.contactNumber &&
+                        !validatePhoneNumber(formData.contactPerson.contactNumber) && (
+                          <p className="mt-1 text-xs text-destructive">Invalid format. Use: 09XX, +63X, or 02 format</p>
+                        )
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -445,14 +765,21 @@ export function AddEmployerModal({
                     />
                     <div>
                       <Input
+                        aria-invalid={
+                          !!fieldErrors.companyTIN ||
+                          (Boolean(formData.companyTIN) && !validateTIN(String(formData.companyTIN)))
+                        }
                         value={formData.companyTIN || ""}
                         onChange={(e) => handleInputChange("companyTIN", e.target.value)}
                         placeholder="9-digit TIN (e.g., 123456789)"
                         maxLength={9}
-                        className={formData.companyTIN && !validateTIN(formData.companyTIN) ? "border-red-500" : ""}
+                        className="aria-[invalid=true]:border-destructive aria-[invalid=true]:focus-visible:ring-destructive/20"
                       />
                       {formData.companyTIN && !validateTIN(formData.companyTIN) && (
-                        <p className="text-xs text-red-500 mt-1">TIN must be 9 digits</p>
+                        <p className="text-xs text-destructive mt-1">TIN must be 9 digits</p>
+                      )}
+                      {fieldErrors.companyTIN && (
+                        <p className="text-xs text-destructive mt-1">{fieldErrors.companyTIN}</p>
                       )}
                     </div>
                   </div>
@@ -479,12 +806,31 @@ export function AddEmployerModal({
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  checked={formData.isManpowerAgency || false}
-                  onCheckedChange={(v) => handleInputChange("isManpowerAgency", v)}
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    checked={formData.srsSubscriber || false}
+                    onCheckedChange={(v) => handleInputChange("srsSubscriber", v)}
+                  />
+                  <Label>Would this establishment desire to be included as subscriber in the SRS when it becomes operational?</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    checked={formData.isManpowerAgency || false}
+                    onCheckedChange={(v) => handleInputChange("isManpowerAgency", v)}
+                  />
+                  <Label>Is Manpower Agency?</Label>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <Label>Remarks</Label>
+                <Textarea
+                  value={formData.remarks || ""}
+                  onChange={(e) => handleInputChange("remarks", e.target.value)}
+                  placeholder="Additional remarks or notes"
+                  rows={3}
                 />
-                <Label>Is Manpower Agency?</Label>
               </div>
 
               {formData.isManpowerAgency && (
@@ -513,7 +859,11 @@ export function AddEmployerModal({
                     value={industrySearchTerm}
                     onChange={(e) => setIndustrySearchTerm(e.target.value)}
                     className="mb-2"
+                    aria-invalid={!!fieldErrors.industryType}
                   />
+                  {fieldErrors.industryType && (
+                    <p className="text-xs text-destructive">{fieldErrors.industryType}</p>
+                  )}
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
@@ -523,6 +873,7 @@ export function AddEmployerModal({
                           ...prev,
                           industryType: industryCodes.map(({ code }) => code),
                         }));
+                        clearFieldError("industryType");
                       }}
                       className="text-xs"
                     >
@@ -573,99 +924,30 @@ export function AddEmployerModal({
               </div>
 
               <div className="border-t pt-4 mt-4">
-                <h3 className="font-semibold text-lg mb-3">GEOGRAPHIC IDENTIFICATION</h3>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Chairperson Name</Label>
-                    <Input
-                      value={formData.chairpersonName || ""}
-                      onChange={(e) => handleInputChange("chairpersonName", e.target.value)}
-                      placeholder="Barangay chairperson"
-                    />
-                  </div>
-                  <div>
-                    <Label>Chairperson Contact</Label>
-                    <div>
-                      <Input
-                        value={formData.chairpersonContact || ""}
-                        onChange={(e) => handleInputChange("chairpersonContact", e.target.value)}
-                        placeholder="09123456789"
-                        className={formData.chairpersonContact && !validatePhoneNumber(formData.chairpersonContact) ? "border-red-500" : ""}
-                      />
-                      {formData.chairpersonContact && !validatePhoneNumber(formData.chairpersonContact) && (
-                        <p className="text-xs text-red-500 mt-1">Invalid phone format</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                  <div>
-                    <Label>Secretary Name</Label>
-                    <Input
-                      value={formData.secretaryName || ""}
-                      onChange={(e) => handleInputChange("secretaryName", e.target.value)}
-                      placeholder="Secretary"
-                    />
-                  </div>
-                  <div>
-                    <Label>Secretary Contact</Label>
-                    <div>
-                      <Input
-                        value={formData.secretaryContact || ""}
-                        onChange={(e) => handleInputChange("secretaryContact", e.target.value)}
-                        placeholder="09123456789"
-                        className={formData.secretaryContact && !validatePhoneNumber(formData.secretaryContact) ? "border-red-500" : ""}
-                      />
-                      {formData.secretaryContact && !validatePhoneNumber(formData.secretaryContact) && (
-                        <p className="text-xs text-red-500 mt-1">Invalid phone format</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t pt-4 mt-4">
-                <h3 className="font-semibold text-lg mb-3">SRS SUBSCRIPTION</h3>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    checked={formData.srsSubscriber || false}
-                    onCheckedChange={(v) => handleInputChange("srsSubscriber", v)}
-                  />
-                  <Label>Wants to be included as SRS subscriber</Label>
-                </div>
-              </div>
-
-              <div className="border-t pt-4 mt-4">
-                <Label>Remarks</Label>
-                <Textarea
-                  value={formData.remarks || ""}
-                  onChange={(e) => handleInputChange("remarks", e.target.value)}
-                  placeholder="Additional remarks or notes"
-                  rows={3}
-                />
-              </div>
-
-              <div className="border-t pt-4 mt-4">
                 <h3 className="font-semibold text-lg mb-3">PREPARED BY</h3>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label>Name *</Label>
                     <Input
+                      aria-invalid={!!fieldErrors.preparedByName}
                       value={formData.preparedByName || ""}
                       onChange={(e) => handleInputChange("preparedByName", e.target.value)}
                       placeholder="Full name"
                     />
+                    {fieldErrors.preparedByName && <p className="mt-1 text-xs text-destructive">{fieldErrors.preparedByName}</p>}
                   </div>
                   <div>
                     <Label>Designation *</Label>
                     <Input
+                      aria-invalid={!!fieldErrors.preparedByDesignation}
                       value={formData.preparedByDesignation || ""}
                       onChange={(e) => handleInputChange("preparedByDesignation", e.target.value)}
                       placeholder="Job title"
                     />
+                    {fieldErrors.preparedByDesignation && (
+                      <p className="mt-1 text-xs text-destructive">{fieldErrors.preparedByDesignation}</p>
+                    )}
                   </div>
                 </div>
 
@@ -679,12 +961,13 @@ export function AddEmployerModal({
                     />
                   </div>
                   <div>
-                    <Label>Date Accomplished *</Label>
+                    <Label>Date Accomplished</Label>
                     <Input
                       type="date"
-                      value={formData.dateAccomplished || ""}
-                      onChange={(e) => handleInputChange("dateAccomplished", e.target.value)}
+                      value={getTodayIsoDate()}
+                      disabled
                     />
+                    <p className="mt-1 text-xs text-muted-foreground">Auto-filled on submit</p>
                   </div>
                 </div>
               </div>
@@ -701,35 +984,6 @@ export function AddEmployerModal({
 
               {/* File Upload Sections */}
               <div className="space-y-3">
-                {/* SRS Form */}
-                <div className="border rounded-lg p-3 bg-blue-50 border-blue-200">
-                  <Label className="text-sm font-semibold mb-2 block flex items-center gap-2">
-                    SRS Form <span className="text-red-600">*</span> <Badge variant="outline" className="bg-red-50">Required</Badge>
-                  </Label>
-                  <div className="flex items-center gap-2">
-                    <label className="flex-1 border-2 border-dashed border-slate-300 rounded-lg p-3 cursor-pointer hover:border-slate-400 hover:bg-slate-50 transition-colors">
-                      <input
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png"
-                        onChange={(e) => handleFileChange("srsFormFile", e.target.files?.[0] || null)}
-                        className="hidden"
-                      />
-                      <div className="flex items-center justify-center gap-2 text-slate-600">
-                        <Upload className="w-4 h-4" />
-                        <span className="text-sm">{uploadedFiles.srsFormFile?.name || "Click to upload"}</span>
-                      </div>
-                    </label>
-                    {uploadedFiles.srsFormFile && (
-                      <button
-                        onClick={() => handleFileChange("srsFormFile", null)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
                 {/* Business Permit */}
                 <div className="border rounded-lg p-3">
                   <Label className="text-sm font-semibold mb-2 block">Business Permit (Photocopy) *</Label>
@@ -811,34 +1065,32 @@ export function AddEmployerModal({
                   </div>
                 </div>
 
-                {/* DOLE Certification (conditional) */}
-                {formData.isManpowerAgency && (
-                  <div className="border rounded-lg p-3">
-                    <Label className="text-sm font-semibold mb-2 block">DOLE Certification (D.O. 174)</Label>
-                    <div className="flex items-center gap-2">
-                      <label className="flex-1 border-2 border-dashed border-slate-300 rounded-lg p-3 cursor-pointer hover:border-slate-400 hover:bg-slate-50 transition-colors">
-                        <input
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          onChange={(e) => handleFileChange("doleCertificationFile", e.target.files?.[0] || null)}
-                          className="hidden"
-                        />
-                        <div className="flex items-center justify-center gap-2 text-slate-600">
-                          <Upload className="w-4 h-4" />
-                          <span className="text-sm">{uploadedFiles.doleCertificationFile?.name || "Click to upload"}</span>
-                        </div>
-                      </label>
-                      {uploadedFiles.doleCertificationFile && (
-                        <button
-                          onClick={() => handleFileChange("doleCertificationFile", null)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
+                {/* DOLE Accreditation */}
+                <div className="border rounded-lg p-3">
+                  <Label className="text-sm font-semibold mb-2 block">DOLE Accreditation</Label>
+                  <div className="flex items-center gap-2">
+                    <label className="flex-1 border-2 border-dashed border-slate-300 rounded-lg p-3 cursor-pointer hover:border-slate-400 hover:bg-slate-50 transition-colors">
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        onChange={(e) => handleFileChange("doleCertificationFile", e.target.files?.[0] || null)}
+                        className="hidden"
+                      />
+                      <div className="flex items-center justify-center gap-2 text-slate-600">
+                        <Upload className="w-4 h-4" />
+                        <span className="text-sm">{uploadedFiles.doleCertificationFile?.name || "Click to upload"}</span>
+                      </div>
+                    </label>
+                    {uploadedFiles.doleCertificationFile && (
+                      <button
+                        onClick={() => handleFileChange("doleCertificationFile", null)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
 
               <div className="border-t pt-4 mt-4 p-3 bg-blue-50 rounded">

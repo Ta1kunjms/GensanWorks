@@ -5,14 +5,16 @@ import AdminAuthSettingsPage from "@/pages/admin/auth-settings";
  * Only accessible to users with role='admin'
  * Features: General, Notifications, Security, API, Maintenance
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/lib/auth";
+import { authFetch, useAuth } from "@/lib/auth";
+import type { GeneralSettings } from "@shared/schema";
 import { 
   Settings, Lock, Bell, Shield, Database, Mail, 
   Palette, Users, FileText, BarChart3, Key, Eye, EyeOff,
@@ -25,14 +27,30 @@ export default function AdminSettingsPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [activeTab, setActiveTab] = useState("general");
 
-  // General Settings State
-  const [generalSettings, setGeneralSettings] = useState({
+  const defaultGeneralSettings: GeneralSettings = {
     siteName: "GensanWorks",
     siteDescription: "Official Job Assistance Platform of PESO – General Santos City",
     contactEmail: "admin@gensanworks.com",
     contactPhone: "+63 283 889 5200",
     address: "General Santos City, South Cotabato",
-  });
+    heroHeadline: "Connecting jobseekers and employers in General Santos City",
+    heroSubheadline: "A single window for opportunities, referrals, and PESO services",
+    primaryCTA: "Browse Jobs",
+    secondaryCTA: "Post a Vacancy",
+    aboutTitle: "Why GensanWorks",
+    aboutBody: "PESO-led platform for job matching, referrals, and analytics across the city.",
+    heroBackgroundImage: "https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=1600&q=80",
+    seoKeywords: "peso gensan jobs, job portal gensan, peso referrals",
+  };
+
+  const [generalSettings, setGeneralSettings] = useState<GeneralSettings | null>(null);
+  const [isLoadingGeneral, setIsLoadingGeneral] = useState(true);
+  const [isSavingGeneral, setIsSavingGeneral] = useState(false);
+  const [hasUnsavedGeneral, setHasUnsavedGeneral] = useState(false);
+  const generalSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // General Settings State
+  const currentGeneralSettings = generalSettings ?? defaultGeneralSettings;
 
   // Notification Settings State
   const [notifications, setNotifications] = useState({
@@ -55,11 +73,87 @@ export default function AdminSettingsPage() {
   const [apiKey] = useState("pk_live_" + "x".repeat(40));
   const [showApiKey, setShowApiKey] = useState(false);
 
+  const loadGeneralSettings = async () => {
+    setIsLoadingGeneral(true);
+    try {
+      const response = await authFetch("/api/settings/general");
+      if (!response.ok) {
+        throw new Error("Failed to load general settings");
+      }
+      const data: GeneralSettings = await response.json();
+      setGeneralSettings(data);
+    } catch (error: any) {
+      toast({
+        title: "Failed to load settings",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+      setGeneralSettings(defaultGeneralSettings);
+    } finally {
+      setIsLoadingGeneral(false);
+    }
+  };
+
+  useEffect(() => {
+    loadGeneralSettings();
+    return () => {
+      if (generalSaveTimer.current) {
+        clearTimeout(generalSaveTimer.current);
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const persistGeneralSettings = async (next: GeneralSettings) => {
+    setIsSavingGeneral(true);
+    try {
+      const response = await authFetch("/api/settings/general", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save general settings");
+      }
+
+      const saved: GeneralSettings = await response.json();
+      setGeneralSettings(saved);
+      setHasUnsavedGeneral(false);
+      toast({
+        title: "Saved",
+        description: "General settings updated successfully",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Save failed",
+        description: error?.message || "Could not persist settings.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingGeneral(false);
+    }
+  };
+
   const handleGeneralSave = () => {
-    toast({
-      title: "Success",
-      description: "General settings updated successfully",
-    });
+    const next = currentGeneralSettings;
+    persistGeneralSettings(next);
+  };
+
+  const scheduleGeneralAutoSave = (next: GeneralSettings) => {
+    if (generalSaveTimer.current) {
+      clearTimeout(generalSaveTimer.current);
+    }
+    generalSaveTimer.current = setTimeout(() => {
+      persistGeneralSettings(next);
+    }, 800);
+  };
+
+  const handleGeneralChange = (partial: Partial<GeneralSettings>) => {
+    const next = { ...currentGeneralSettings, ...partial };
+    setGeneralSettings(next);
+    setHasUnsavedGeneral(true);
+    scheduleGeneralAutoSave(next);
   };
 
   const handleNotificationSave = () => {
@@ -109,16 +203,6 @@ export default function AdminSettingsPage() {
     <div className="flex-1 overflow-auto">
       <div className="bg-gradient-to-br from-slate-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 min-h-screen">
         <div className="container mx-auto p-6 space-y-6 max-w-[1200px]">
-          {/* Header */}
-          <div className="space-y-2">
-            <h1 className="text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
-              Admin Settings
-            </h1>
-            <p className="text-slate-600 dark:text-slate-400">
-              Configure system settings, security, and preferences
-            </p>
-          </div>
-
           {/* Settings Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
             <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 lg:grid-cols-5">
@@ -157,9 +241,10 @@ export default function AdminSettingsPage() {
                       <Label htmlFor="siteName">Site Name</Label>
                       <Input
                         id="siteName"
-                        value={generalSettings.siteName}
-                        onChange={(e) => setGeneralSettings({ ...generalSettings, siteName: e.target.value })}
+                        value={currentGeneralSettings.siteName}
+                        onChange={(e) => handleGeneralChange({ siteName: e.target.value })}
                         placeholder="GensanWorks"
+                        disabled={isLoadingGeneral || isSavingGeneral}
                       />
                     </div>
                     <div className="space-y-2">
@@ -167,21 +252,115 @@ export default function AdminSettingsPage() {
                       <Input
                         id="contactEmail"
                         type="email"
-                        value={generalSettings.contactEmail}
-                        onChange={(e) => setGeneralSettings({ ...generalSettings, contactEmail: e.target.value })}
+                        value={currentGeneralSettings.contactEmail}
+                        onChange={(e) => handleGeneralChange({ contactEmail: e.target.value })}
                         placeholder="admin@example.com"
+                        disabled={isLoadingGeneral || isSavingGeneral}
                       />
                     </div>
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="siteDesc">Site Description</Label>
-                    <textarea
+                    <Textarea
                       id="siteDesc"
-                      value={generalSettings.siteDescription}
-                      onChange={(e) => setGeneralSettings({ ...generalSettings, siteDescription: e.target.value })}
+                      value={currentGeneralSettings.siteDescription}
+                      onChange={(e) => handleGeneralChange({ siteDescription: e.target.value })}
                       placeholder="Describe your platform"
-                      className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 min-h-[100px]"
+                      className="min-h-[100px]"
+                      disabled={isLoadingGeneral || isSavingGeneral}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="heroHeadline">Hero Headline</Label>
+                      <Input
+                        id="heroHeadline"
+                        value={currentGeneralSettings.heroHeadline}
+                        onChange={(e) => handleGeneralChange({ heroHeadline: e.target.value })}
+                        placeholder="Connecting jobseekers and employers in General Santos City"
+                        disabled={isLoadingGeneral || isSavingGeneral}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="heroSubheadline">Hero Subheadline</Label>
+                      <Input
+                        id="heroSubheadline"
+                        value={currentGeneralSettings.heroSubheadline}
+                        onChange={(e) => handleGeneralChange({ heroSubheadline: e.target.value })}
+                        placeholder="A single window for opportunities, referrals, and PESO services"
+                        disabled={isLoadingGeneral || isSavingGeneral}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="primaryCTA">Primary CTA Label</Label>
+                      <Input
+                        id="primaryCTA"
+                        value={currentGeneralSettings.primaryCTA}
+                        onChange={(e) => handleGeneralChange({ primaryCTA: e.target.value })}
+                        placeholder="Browse Jobs"
+                        disabled={isLoadingGeneral || isSavingGeneral}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="secondaryCTA">Secondary CTA Label</Label>
+                      <Input
+                        id="secondaryCTA"
+                        value={currentGeneralSettings.secondaryCTA}
+                        onChange={(e) => handleGeneralChange({ secondaryCTA: e.target.value })}
+                        placeholder="Post a Vacancy"
+                        disabled={isLoadingGeneral || isSavingGeneral}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="heroBackgroundImage">Hero Background Image URL</Label>
+                    <Input
+                      id="heroBackgroundImage"
+                      value={currentGeneralSettings.heroBackgroundImage}
+                        onChange={(e) => handleGeneralChange({ heroBackgroundImage: e.target.value })}
+                      placeholder="https://..."
+                      disabled={isLoadingGeneral || isSavingGeneral}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="aboutTitle">About Title</Label>
+                      <Input
+                        id="aboutTitle"
+                        value={currentGeneralSettings.aboutTitle}
+                        onChange={(e) => handleGeneralChange({ aboutTitle: e.target.value })}
+                        placeholder="Why GensanWorks"
+                        disabled={isLoadingGeneral || isSavingGeneral}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="seoKeywords">SEO Keywords</Label>
+                      <Input
+                        id="seoKeywords"
+                        value={currentGeneralSettings.seoKeywords}
+                        onChange={(e) => handleGeneralChange({ seoKeywords: e.target.value })}
+                        placeholder="peso gensan jobs, job portal gensan, peso referrals"
+                        disabled={isLoadingGeneral || isSavingGeneral}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="aboutBody">About Body</Label>
+                    <Textarea
+                      id="aboutBody"
+                      value={currentGeneralSettings.aboutBody}
+                      onChange={(e) => handleGeneralChange({ aboutBody: e.target.value })}
+                      placeholder="PESO-led platform for job matching, referrals, and analytics across the city."
+                      className="min-h-[120px]"
+                      disabled={isLoadingGeneral || isSavingGeneral}
                     />
                   </div>
 
@@ -190,26 +369,39 @@ export default function AdminSettingsPage() {
                       <Label htmlFor="phone">Contact Phone</Label>
                       <Input
                         id="phone"
-                        value={generalSettings.contactPhone}
-                        onChange={(e) => setGeneralSettings({ ...generalSettings, contactPhone: e.target.value })}
+                        value={currentGeneralSettings.contactPhone}
+                        onChange={(e) => handleGeneralChange({ contactPhone: e.target.value })}
                         placeholder="+63 283 889 5200"
+                        disabled={isLoadingGeneral || isSavingGeneral}
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="address">Office Address</Label>
                       <Input
                         id="address"
-                        value={generalSettings.address}
-                        onChange={(e) => setGeneralSettings({ ...generalSettings, address: e.target.value })}
+                        value={currentGeneralSettings.address}
+                        onChange={(e) => handleGeneralChange({ address: e.target.value })}
                         placeholder="General Santos City, South Cotabato"
+                        disabled={isLoadingGeneral || isSavingGeneral}
                       />
                     </div>
                   </div>
 
-                  <Button onClick={handleGeneralSave} className="flex items-center gap-2">
-                    <Save className="w-4 h-4" />
-                    Save Changes
-                  </Button>
+                  <div className="flex items-center gap-3">
+                    <Button onClick={handleGeneralSave} className="flex items-center gap-2" disabled={isSavingGeneral}>
+                      <Save className="w-4 h-4" />
+                      {isSavingGeneral ? "Saving..." : hasUnsavedGeneral ? "Save Changes" : "Saved"}
+                    </Button>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      {isLoadingGeneral
+                        ? "Loading current settings..."
+                        : isSavingGeneral
+                          ? "Persisting updates"
+                          : hasUnsavedGeneral
+                            ? "Unsaved changes pending"
+                            : "All changes synced"}
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>

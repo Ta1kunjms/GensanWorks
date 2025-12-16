@@ -2,7 +2,7 @@
  * Create Account Modal
  * Modal for creating a user account from an applicant
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { useFieldErrors } from '@/lib/field-errors';
 import { Eye, EyeOff } from 'lucide-react';
 
 interface CreateAccountModalProps {
@@ -35,34 +36,48 @@ export function CreateAccountModal({
   const [showPassword, setShowPassword] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
 
+  type CreateAccountField = 'password' | 'confirmPassword' | 'email';
+  const { fieldErrors, clearFieldError, setErrorsAndFocus, setFieldErrors } =
+    useFieldErrors<CreateAccountField>();
+
+  useEffect(() => {
+    if (!open) return;
+
+    const email = applicant?.email;
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      if (!email) {
+        next.email = 'Applicant must have an email address to create an account';
+      } else {
+        delete next.email;
+      }
+      return next;
+    });
+  }, [open, applicant?.email, setFieldErrors]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validation
-    if (!password || password.length < 6) {
-      toast({
-        title: 'Invalid Password',
-        description: 'Password must be at least 6 characters',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      toast({
-        title: 'Password Mismatch',
-        description: 'Passwords do not match',
-        variant: 'destructive',
-      });
-      return;
-    }
+    const nextErrors: Partial<Record<CreateAccountField, string>> = {};
 
     if (!applicant?.email) {
-      toast({
-        title: 'No Email',
-        description: 'Applicant must have an email address to create an account',
-        variant: 'destructive',
-      });
+      nextErrors.email = 'Applicant must have an email address to create an account';
+    }
+
+    if (!password) {
+      nextErrors.password = 'Password is required';
+    } else if (password.length < 6) {
+      nextErrors.password = 'Password must be at least 6 characters';
+    }
+
+    if (!confirmPassword) {
+      nextErrors.confirmPassword = 'Confirm your password';
+    } else if (password !== confirmPassword) {
+      nextErrors.confirmPassword = 'Passwords do not match';
+    }
+
+    if (Object.keys(nextErrors).length) {
+      setErrorsAndFocus(nextErrors);
       return;
     }
 
@@ -89,6 +104,7 @@ export function CreateAccountModal({
       // Reset form
       setPassword('');
       setConfirmPassword('');
+      setFieldErrors({});
       
       // Close modal and refresh
       onOpenChange(false);
@@ -108,6 +124,7 @@ export function CreateAccountModal({
     setPassword('');
     setConfirmPassword('');
     setShowPassword(false);
+    setFieldErrors({});
     onOpenChange(false);
   };
 
@@ -137,7 +154,16 @@ export function CreateAccountModal({
             </div>
             <div>
               <span className="text-sm font-medium text-slate-700">Email:</span>
-              <p className="text-slate-900">{applicant.email || 'No email'}</p>
+              <p
+                className={applicant.email ? 'text-slate-900' : 'text-destructive'}
+                aria-invalid={!!fieldErrors.email}
+                tabIndex={fieldErrors.email ? -1 : undefined}
+              >
+                {applicant.email || 'No email'}
+              </p>
+              {fieldErrors.email && (
+                <p className="mt-1 text-xs text-destructive">{fieldErrors.email}</p>
+              )}
             </div>
             <div>
               <span className="text-sm font-medium text-slate-700">Role:</span>
@@ -154,10 +180,15 @@ export function CreateAccountModal({
                   id="password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    clearFieldError('password');
+                  }}
                   placeholder="Enter password (min 6 characters)"
                   required
                   minLength={6}
+                  aria-invalid={!!fieldErrors.password}
+                  className="aria-[invalid=true]:border-destructive aria-[invalid=true]:focus-visible:ring-destructive/20"
                 />
                 <button
                   type="button"
@@ -167,6 +198,9 @@ export function CreateAccountModal({
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
+              {fieldErrors.password && (
+                <p className="text-xs text-destructive">{fieldErrors.password}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -175,11 +209,19 @@ export function CreateAccountModal({
                 id="confirmPassword"
                 type={showPassword ? 'text' : 'password'}
                 value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  clearFieldError('confirmPassword');
+                }}
                 placeholder="Confirm password"
                 required
                 minLength={6}
+                aria-invalid={!!fieldErrors.confirmPassword}
+                className="aria-[invalid=true]:border-destructive aria-[invalid=true]:focus-visible:ring-destructive/20"
               />
+              {fieldErrors.confirmPassword && (
+                <p className="text-xs text-destructive">{fieldErrors.confirmPassword}</p>
+              )}
             </div>
 
             <div className="flex gap-3 pt-2">

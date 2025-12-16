@@ -1,74 +1,55 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/lib/auth';
 import { formatApiError } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, Lock, Mail, Eye, EyeOff, Shield, ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Building2, CheckCircle2, Mail, Phone, User } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { AuthShell } from '@/components/auth/auth-shell';
 
 export default function AdminSignup(){
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [organization, setOrganization] = useState('');
   const [phone, setPhone] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [requestSubmitted, setRequestSubmitted] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [error, setError] = useState('');
   const { toast } = useToast();
-  const { setAuth } = useAuth();
   const [, navigate] = useLocation();
 
-  const handleSignup = async (e:React.FormEvent) => {
-    e.preventDefault();
-    try{
-      if (!name) return toast({ title: 'Validation', description: 'Full name is required', variant: 'destructive' });
-      if (!email) return toast({ title: 'Validation', description: 'Email is required', variant: 'destructive' });
-      if (!phone) return toast({ title: 'Validation', description: 'Phone number is required', variant: 'destructive' });
-      if (!organization) return toast({ title: 'Validation', description: 'Organization is required', variant: 'destructive' });
-      if (!password || password.length < 6) return toast({ title: 'Validation', description: 'Password (min 6 chars) is required', variant: 'destructive' });
-      if (password !== confirmPassword) return toast({ title: 'Validation', description: 'Passwords do not match', variant: 'destructive' });
-      
-      setIsLoading(true);
-      
-      const res = await fetch('/api/admin/register', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ name, email, password, phone, organization }) 
-      });
-      
-      const text = await res.text();
-      let data: any = {};
-      try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text || 'Invalid server response' }; }
-      
-      if (!res.ok) throw new Error(formatApiError(data));
-      if (!data || !data.token || !data.user) throw new Error(formatApiError(data));
-      
-      setAuth(data.token, data.user);
-      toast({ title: 'Success', description: `Welcome ${data.user?.name ?? 'Admin'}! 🎉` });
-      navigate('/admin/dashboard');
-    }catch(err){
-      console.error('Admin signup error:', err);
-      toast({ title: 'Error', description: String((err as any)?.message || err || 'Signup failed'), variant: 'destructive' });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  useEffect(() => {
+    if (!requestSubmitted) return;
+    const t = setTimeout(() => navigate('/admin/login'), 3000);
+    return () => clearTimeout(t);
+  }, [requestSubmitted, navigate]);
 
   const handleRequestAccess = async (e:React.FormEvent) => {
     e.preventDefault();
     try{
-      if (!name) return toast({ title: 'Validation', description: 'Full name is required', variant: 'destructive' });
-      if (!email) return toast({ title: 'Validation', description: 'Email is required', variant: 'destructive' });
-      if (!phone) return toast({ title: 'Validation', description: 'Phone number is required', variant: 'destructive' });
-      if (!organization) return toast({ title: 'Validation', description: 'Organization is required', variant: 'destructive' });
+      setError('');
+      const nextErrors: Record<string, string> = {};
+      if (!name.trim()) nextErrors.name = 'Full name is required';
+      if (!email.trim()) nextErrors.email = 'Email is required';
+      else if (!/^\S+@\S+\.\S+$/.test(email.trim())) nextErrors.email = 'Enter a valid email';
+      if (!phone.trim()) nextErrors.phone = 'Phone number is required';
+      if (!organization.trim()) nextErrors.organization = 'Organization is required';
+
+      setFieldErrors(nextErrors);
+      if (Object.keys(nextErrors).length) {
+        setTimeout(() => {
+          const el = document.querySelector<HTMLElement>("[aria-invalid='true']");
+          el?.focus?.();
+          el?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+        }, 0);
+        return;
+      }
       
       setIsLoading(true);
       
-      const res = await fetch('/api/admin/request-access', { 
+      const res = await fetch('/api/admin/access-requests', { 
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ name, email, phone, organization }) 
@@ -82,12 +63,9 @@ export default function AdminSignup(){
       
       setRequestSubmitted(true);
       toast({ title: 'Request Submitted', description: 'Your admin access request has been sent to administrators.' });
-      
-      setTimeout(() => {
-        navigate('/admin/login');
-      }, 3000);
     }catch(err){
       console.error('Admin access request error:', err);
+      setError(String((err as any)?.message || err || 'Request failed'));
       toast({ title: 'Error', description: String((err as any)?.message || err || 'Request failed'), variant: 'destructive' });
     } finally {
       setIsLoading(false);
@@ -96,172 +74,220 @@ export default function AdminSignup(){
 
   if (requestSubmitted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          {/* Success Card */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-lg text-center">
-            <div className="flex justify-center mb-6">
-              <div className="bg-green-100 p-4 rounded-full">
-                <CheckCircle2 className="w-8 h-8 text-green-600" />
-              </div>
-            </div>
-            
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">Request Submitted!</h1>
-            <p className="text-slate-600 mb-2">Your admin access request has been received.</p>
-            <p className="text-slate-500 text-sm mb-6">Our administrators will review your request and contact you at <span className="text-blue-600 font-medium">{email}</span> within 24-48 hours.</p>
-            
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-6">
-              <p className="text-slate-700 text-sm"><span className="font-semibold">Name:</span> {name}</p>
-              <p className="text-slate-700 text-sm"><span className="font-semibold">Organization:</span> {organization}</p>
-              <p className="text-slate-700 text-sm"><span className="font-semibold">Email:</span> {email}</p>
-            </div>
-
-            <Link href="/admin/login">
-              <Button className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-semibold">
-                Back to Login
-              </Button>
-            </Link>
-
-            <p className="text-slate-500 text-xs mt-4">Redirecting to login in 3 seconds...</p>
+      <AuthShell
+        title="Request submitted"
+        subtitle="We&apos;ll review your request and email you updates."
+        roleLabel="Admin Portal"
+        formVariant="card"
+        layout="split"
+        nav={{
+          loginHref: "/admin/login",
+          joinHref: "/admin/signup",
+          homeHref: "/",
+          aboutHref: "/about",
+          activePortalId: "admin",
+        }}
+        sideContent={
+          <div className="space-y-3">
+            <p className="text-sm font-medium">What happens next</p>
+            <ul className="space-y-2 text-sm text-muted-foreground">
+              <li>Admins review your request</li>
+              <li>You receive updates via email</li>
+              <li>Approved users can sign in</li>
+            </ul>
           </div>
+        }
+        footer={
+          <p className="text-xs text-muted-foreground text-center">Redirecting to login in ~3 seconds…</p>
+        }
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 p-3">
+            <CheckCircle2 className="h-5 w-5" />
+            <div className="text-sm">
+              <p className="font-medium">Request received</p>
+              <p className="text-muted-foreground">We&apos;ll contact you at {email}.</p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border/60 bg-card/50 p-4 text-sm">
+            <p><span className="font-medium">Name:</span> {name}</p>
+            <p><span className="font-medium">Organization:</span> {organization}</p>
+            <p><span className="font-medium">Phone:</span> {phone}</p>
+          </div>
+
+          <Button className="w-full" asChild>
+            <Link href="/admin/login">Back to login</Link>
+          </Button>
         </div>
-      </div>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Header Section */}
-        <div className="text-center mb-8">
-          <Link href="/admin/login">
-            <div className="flex items-center justify-center gap-2 text-slate-600 hover:text-slate-700 mb-4 cursor-pointer transition">
-              <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm">Back to Login</span>
-            </div>
-          </Link>
-          
-          <div className="flex justify-center mb-4">
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-4 rounded-2xl shadow-lg">
-              <Shield className="w-8 h-8 text-white" />
-            </div>
-          </div>
-          <h1 className="text-4xl font-bold text-slate-900 mb-2">
-            GensanWorks
-          </h1>
-          <p className="text-slate-600 text-sm">Admin Access Request</p>
-          <p className="text-slate-500 text-xs mt-1">Join the GensanWorks Admin Team</p>
+    <AuthShell
+      title="Request access"
+      subtitle="Submit details for admin approval."
+      roleLabel="Admin Portal"
+      formVariant="card"
+      layout="split"
+      nav={{
+        loginHref: "/admin/login",
+        joinHref: "/admin/signup",
+        homeHref: "/",
+        aboutHref: "/about",
+        activePortalId: "admin",
+      }}
+      sideContent={
+        <div className="space-y-3">
+          <p className="text-sm font-medium">Admin access</p>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            <li>Requires approval from administrators</li>
+            <li>Use an official email if available</li>
+            <li>Provide a reachable contact number</li>
+          </ul>
         </div>
-
-        {/* Signup Card */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-lg">
-          <h2 className="text-2xl font-bold text-slate-900 mb-6">Request Admin Access</h2>
-
-          <form onSubmit={handleRequestAccess} className="space-y-4">
-            {/* Full Name Field */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-700">Full Name</label>
-              <Input 
-                type="text" 
-                value={name} 
-                onChange={e=>setName(e.target.value)}
-                placeholder="Juan Dela Cruz"
-                className="bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                disabled={isLoading}
-              />
-            </div>
-
-            {/* Email Field */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-700">Email Address</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <input 
-                  type="email" 
-                  value={email} 
-                  onChange={e=>setEmail(e.target.value)}
-                  placeholder="admin@example.com"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg pl-10 pr-4 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition"
-                  disabled={isLoading}
-                />
-              </div>
-            </div>
-
-            {/* Phone Field */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-700">Phone Number</label>
-              <Input 
-                type="tel" 
-                value={phone} 
-                onChange={e=>setPhone(e.target.value)}
-                placeholder="+63 912 345 6789"
-                className="bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                disabled={isLoading}
-              />
-            </div>
-
-            {/* Organization Field */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-700">Organization / Department</label>
-              <Input 
-                type="text" 
-                value={organization} 
-                onChange={e=>setOrganization(e.target.value)}
-                placeholder="PESO - General Santos City"
-                className="bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                disabled={isLoading}
-              />
-            </div>
-
-            {/* Info Box */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex gap-3">
-                <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                <div className="text-sm text-blue-900">
-                  <p className="font-semibold mb-1">How Admin Access Works</p>
-                  <p className="text-xs opacity-90">Submit your details and our administrators will review your request. You'll receive an approval email within 24-48 hours with your login credentials.</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Submit Button */}
-            <Button 
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-semibold py-3 h-11 flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
-            >
-              {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {isLoading ? 'Submitting Request...' : 'Request Admin Access'}
-            </Button>
-          </form>
-
-          {/* Divider */}
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-200"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-slate-500">Already have an admin account?</span>
-            </div>
-          </div>
-
-          {/* Login Link */}
-          <Link href="/admin/login">
-            <Button 
-              type="button"
-              variant="outline"
-              className="w-full border-slate-300 text-slate-700 hover:bg-slate-50"
-            >
-              Sign In
-            </Button>
+      }
+      footer={
+        <p className="text-sm text-muted-foreground text-center">
+          Already have an admin account?{' '}
+          <Link href="/admin/login" className="font-medium text-foreground underline underline-offset-4 hover:text-foreground">
+            Sign in
           </Link>
-        </div>
-
-        {/* Footer */}
-        <p className="text-center text-slate-500 text-xs mt-6">
-          Official Job Assistance Platform of PESO – General Santos City
         </p>
-      </div>
-    </div>
+      }
+    >
+      <form onSubmit={handleRequestAccess} className="space-y-5">
+        {error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Request failed</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Full name</label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="text"
+                value={name}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setName(v);
+                  setFieldErrors((prev) => {
+                    if (!prev.name) return prev;
+                    const next = { ...prev };
+                    delete next.name;
+                    return next;
+                  });
+                }}
+                placeholder="Juan Dela Cruz"
+                aria-invalid={!!fieldErrors.name}
+                className="h-11 pl-9"
+                autoComplete="name"
+                disabled={isLoading}
+              />
+            </div>
+            {fieldErrors.name ? <p className="text-xs text-destructive">{fieldErrors.name}</p> : null}
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Email</label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setEmail(v);
+                  setFieldErrors((prev) => {
+                    if (!prev.email) return prev;
+                    const next = { ...prev };
+                    delete next.email;
+                    return next;
+                  });
+                }}
+                placeholder="admin@example.com"
+                aria-invalid={!!fieldErrors.email}
+                className="h-11 pl-9"
+                autoComplete="email"
+                disabled={isLoading}
+              />
+            </div>
+            {fieldErrors.email ? <p className="text-xs text-destructive">{fieldErrors.email}</p> : null}
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Phone</label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="tel"
+                value={phone}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setPhone(v);
+                  setFieldErrors((prev) => {
+                    if (!prev.phone) return prev;
+                    const next = { ...prev };
+                    delete next.phone;
+                    return next;
+                  });
+                }}
+                placeholder="+63 912 345 6789"
+                aria-invalid={!!fieldErrors.phone}
+                className="h-11 pl-9"
+                autoComplete="tel"
+                disabled={isLoading}
+              />
+            </div>
+            {fieldErrors.phone ? <p className="text-xs text-destructive">{fieldErrors.phone}</p> : null}
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Organization / department</label>
+            <div className="relative">
+              <Building2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="text"
+                value={organization}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setOrganization(v);
+                  setFieldErrors((prev) => {
+                    if (!prev.organization) return prev;
+                    const next = { ...prev };
+                    delete next.organization;
+                    return next;
+                  });
+                }}
+                placeholder="PESO - General Santos City"
+                aria-invalid={!!fieldErrors.organization}
+                className="h-11 pl-9"
+                autoComplete="organization"
+                disabled={isLoading}
+              />
+            </div>
+            {fieldErrors.organization ? <p className="text-xs text-destructive">{fieldErrors.organization}</p> : null}
+          </div>
+        </div>
+
+        <Alert>
+          <AlertTitle>How admin access works</AlertTitle>
+          <AlertDescription>
+            Submit your details and administrators will review your request. You&apos;ll receive updates via email.
+          </AlertDescription>
+        </Alert>
+
+        <Button type="submit" disabled={isLoading} className="w-full">
+          {isLoading ? 'Submitting request…' : 'Request admin access'}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }

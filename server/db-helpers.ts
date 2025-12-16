@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { initializeDatabase } from "./database";
-import { adminsTable, applicantsTable, employersTable } from "./unified-schema";
+import { adminsTable, usersTable, employersTable } from "./unified-schema";
 import { verifyPassword } from "./auth";
 
 let db: any = null;
@@ -15,10 +15,12 @@ export async function initStorageWithDatabase() {
 // Override storage methods to use database
 export async function getAdminByEmailWithPassword(email: string) {
   const db = await initStorageWithDatabase();
+  const normalizedEmail = email.trim().toLowerCase();
   const result = await db
     .select()
     .from(adminsTable)
-    .where(eq(adminsTable.email, email.toLowerCase()))
+    // Case-insensitive match to avoid login failures when stored email casing differs.
+    .where(sql`lower(${adminsTable.email}) = ${normalizedEmail}`)
     .limit(1);
 
   return result.length > 0 ? result[0] : null;
@@ -26,10 +28,18 @@ export async function getAdminByEmailWithPassword(email: string) {
 
 export async function getEmployerByEmailWithPassword(email: string) {
   const db = await initStorageWithDatabase();
+  const normalizedEmail = email.trim().toLowerCase();
   const result = await db
-    .select()
+    .select({
+      id: employersTable.id,
+      establishmentName: employersTable.establishmentName,
+      email: employersTable.email,
+      passwordHash: employersTable.passwordHash,
+      hasAccount: employersTable.hasAccount,
+    })
     .from(employersTable)
-    .where(eq(employersTable.email, email.toLowerCase()))
+    // Case-insensitive match to avoid login failures when stored email casing differs.
+    .where(sql`lower(${employersTable.email}) = ${normalizedEmail}`)
     .limit(1);
 
   if (result.length > 0 && result[0].passwordHash && result[0].hasAccount) {
@@ -46,10 +56,20 @@ export async function getEmployerByEmailWithPassword(email: string) {
 
 export async function getJobseekerByEmailWithPassword(email: string) {
   const db = await initStorageWithDatabase();
+  const normalizedEmail = email.trim().toLowerCase();
   const result = await db
-    .select()
-    .from(applicantsTable)
-    .where(eq(applicantsTable.email, email.toLowerCase()))
+    .select({
+      id: usersTable.id,
+      firstName: usersTable.firstName,
+      surname: usersTable.surname,
+      email: usersTable.email,
+      role: usersTable.role,
+      passwordHash: usersTable.passwordHash,
+      hasAccount: usersTable.hasAccount,
+    })
+    .from(usersTable)
+    // Case-insensitive match to avoid login failures when stored email casing differs.
+    .where(sql`lower(${usersTable.email}) = ${normalizedEmail}`)
     .limit(1);
 
   if (result.length > 0 && result[0].passwordHash && result[0].hasAccount) {

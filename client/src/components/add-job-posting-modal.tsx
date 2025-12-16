@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SkillSpecializationInput } from "@/components/skill-specialization-input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -21,7 +22,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { authFetch } from "@/lib/auth";
+import { useFieldErrors, type FieldErrors } from "@/lib/field-errors";
 import { industryNameMap } from "@shared/schema";
+import { EDUCATION_LEVEL_OPTIONS } from "@shared/education";
 
 interface AddJobPostingModalProps {
   open: boolean;
@@ -35,17 +38,7 @@ interface Employer {
   contactNumber?: string;
 }
 
-const EDUCATION_LEVELS = [
-  "Elementary",
-  "Secondary",
-  "High School (K-12)",
-  "Senior High School",
-  "Vocational/Technical",
-  "Associate Degree",
-  "Bachelor's Degree",
-  "Master's Degree",
-  "No specific requirement",
-];
+const EDUCATION_LEVELS = EDUCATION_LEVEL_OPTIONS;
 
 export function AddJobPostingModal({
   open,
@@ -56,6 +49,19 @@ export function AddJobPostingModal({
   const [loading, setLoading] = useState(false);
   const [employers, setEmployers] = useState<Employer[]>([]);
   const [loadingEmployers, setLoadingEmployers] = useState(false);
+
+  type JobPostingRequiredField =
+    | "employerId"
+    | "title"
+    | "minimumEducation"
+    | "mainSkillOrSpecialization"
+    | "salaryMin"
+    | "preparedByName"
+    | "preparedByDesignation"
+    | "dateAccomplished";
+
+  const { fieldErrors, clearFieldError, setErrorsAndFocus } =
+    useFieldErrors<JobPostingRequiredField>();
 
   const industryCodes = Object.entries(industryNameMap)
     .map(([code, name]) => ({ code, name }))
@@ -110,6 +116,19 @@ export function AddJobPostingModal({
       ...prev,
       [field]: value,
     }));
+
+    if (
+      field === "employerId" ||
+      field === "title" ||
+      field === "minimumEducation" ||
+      field === "mainSkillOrSpecialization" ||
+      field === "salaryMin" ||
+      field === "preparedByName" ||
+      field === "preparedByDesignation" ||
+      field === "dateAccomplished"
+    ) {
+      clearFieldError(field as JobPostingRequiredField);
+    }
   };
 
   const handleIndustryToggle = (code: string) => {
@@ -125,30 +144,26 @@ export function AddJobPostingModal({
   };
 
   const validateForm = () => {
-    if (!formData.employerId) {
-      toast({ title: "Error", description: "Please select an employer", variant: "destructive" });
+    const nextErrors: FieldErrors<JobPostingRequiredField> = {};
+
+    if (!String(formData.employerId || "").trim()) nextErrors.employerId = "Please select an employer";
+    if (!String(formData.title || "").trim()) nextErrors.title = "Position title is required";
+    if (!String(formData.minimumEducation || "").trim()) nextErrors.minimumEducation = "Minimum education is required";
+    if (!String(formData.mainSkillOrSpecialization || "").trim()) {
+      nextErrors.mainSkillOrSpecialization = "Main skill/specialization is required";
+    }
+    if (!String(formData.salaryMin || "").trim() || parseFloat(String(formData.salaryMin)) <= 0) {
+      nextErrors.salaryMin = "Valid starting salary is required";
+    }
+    if (!String(formData.preparedByName || "").trim()) nextErrors.preparedByName = "Name is required";
+    if (!String(formData.preparedByDesignation || "").trim()) nextErrors.preparedByDesignation = "Designation is required";
+    if (!String(formData.dateAccomplished || "").trim()) nextErrors.dateAccomplished = "Date accomplished is required";
+
+    if (Object.keys(nextErrors).length) {
+      setErrorsAndFocus(nextErrors);
       return false;
     }
-    if (!formData.title) {
-      toast({ title: "Error", description: "Position title is required", variant: "destructive" });
-      return false;
-    }
-    if (!formData.minimumEducation) {
-      toast({ title: "Error", description: "Minimum education is required", variant: "destructive" });
-      return false;
-    }
-    if (!formData.mainSkillOrSpecialization) {
-      toast({ title: "Error", description: "Main skill/specialization is required", variant: "destructive" });
-      return false;
-    }
-    if (!formData.salaryMin || parseFloat(formData.salaryMin) <= 0) {
-      toast({ title: "Error", description: "Valid starting salary is required", variant: "destructive" });
-      return false;
-    }
-    if (!formData.preparedByName || !formData.preparedByDesignation || !formData.dateAccomplished) {
-      toast({ title: "Error", description: "Please fill in prepared by information and date", variant: "destructive" });
-      return false;
-    }
+
     return true;
   };
 
@@ -247,7 +262,7 @@ export function AddJobPostingModal({
                 value={formData.employerId}
                 onValueChange={(v) => handleInputChange("employerId", v)}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-invalid={!!fieldErrors.employerId}>
                   <SelectValue placeholder={loadingEmployers ? "Loading..." : "Select an employer"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -258,6 +273,7 @@ export function AddJobPostingModal({
                   ))}
                 </SelectContent>
               </Select>
+              {fieldErrors.employerId && <p className="mt-1 text-xs text-destructive">{fieldErrors.employerId}</p>}
             </div>
 
             <div>
@@ -284,10 +300,12 @@ export function AddJobPostingModal({
               <div>
                 <Label>Position Title *</Label>
                 <Input
+                  aria-invalid={!!fieldErrors.title}
                   value={formData.title}
                   onChange={(e) => handleInputChange("title", e.target.value)}
                   placeholder="e.g., Software Developer"
                 />
+                {fieldErrors.title && <p className="mt-1 text-xs text-destructive">{fieldErrors.title}</p>}
               </div>
               <div>
                 <Label>Number of Vacancies</Label>
@@ -307,7 +325,7 @@ export function AddJobPostingModal({
                   value={formData.minimumEducation}
                   onValueChange={(v) => handleInputChange("minimumEducation", v)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-invalid={!!fieldErrors.minimumEducation}>
                     <SelectValue placeholder="Select level" />
                   </SelectTrigger>
                   <SelectContent>
@@ -318,14 +336,21 @@ export function AddJobPostingModal({
                     ))}
                   </SelectContent>
                 </Select>
+                {fieldErrors.minimumEducation && (
+                  <p className="mt-1 text-xs text-destructive">{fieldErrors.minimumEducation}</p>
+                )}
               </div>
               <div>
                 <Label>Main Skill/Specialization Desired *</Label>
-                <Input
+                <SkillSpecializationInput
+                  aria-invalid={!!fieldErrors.mainSkillOrSpecialization}
                   value={formData.mainSkillOrSpecialization}
-                  onChange={(e) => handleInputChange("mainSkillOrSpecialization", e.target.value)}
-                  placeholder="e.g., JavaScript, Accounting"
+                  onChange={(next) => handleInputChange("mainSkillOrSpecialization", next)}
+                  placeholder="Type a skill and press Enter"
                 />
+                {fieldErrors.mainSkillOrSpecialization && (
+                  <p className="mt-1 text-xs text-destructive">{fieldErrors.mainSkillOrSpecialization}</p>
+                )}
               </div>
             </div>
 
@@ -379,10 +404,12 @@ export function AddJobPostingModal({
                 <Input
                   type="number"
                   min="0"
+                  aria-invalid={!!fieldErrors.salaryMin}
                   value={formData.salaryMin}
                   onChange={(e) => handleInputChange("salaryMin", e.target.value)}
                   placeholder="Amount"
                 />
+                {fieldErrors.salaryMin && <p className="mt-1 text-xs text-destructive">{fieldErrors.salaryMin}</p>}
               </div>
               <div>
                 <Label>Maximum Salary</Label>
@@ -464,18 +491,26 @@ export function AddJobPostingModal({
               <div>
                 <Label>Name *</Label>
                 <Input
+                  aria-invalid={!!fieldErrors.preparedByName}
                   value={formData.preparedByName}
                   onChange={(e) => handleInputChange("preparedByName", e.target.value)}
                   placeholder="Full name"
                 />
+                {fieldErrors.preparedByName && (
+                  <p className="mt-1 text-xs text-destructive">{fieldErrors.preparedByName}</p>
+                )}
               </div>
               <div>
                 <Label>Designation *</Label>
                 <Input
+                  aria-invalid={!!fieldErrors.preparedByDesignation}
                   value={formData.preparedByDesignation}
                   onChange={(e) => handleInputChange("preparedByDesignation", e.target.value)}
                   placeholder="Job title"
                 />
+                {fieldErrors.preparedByDesignation && (
+                  <p className="mt-1 text-xs text-destructive">{fieldErrors.preparedByDesignation}</p>
+                )}
               </div>
             </div>
 
@@ -492,9 +527,13 @@ export function AddJobPostingModal({
                 <Label>Date Accomplished *</Label>
                 <Input
                   type="date"
+                  aria-invalid={!!fieldErrors.dateAccomplished}
                   value={formData.dateAccomplished}
                   onChange={(e) => handleInputChange("dateAccomplished", e.target.value)}
                 />
+                {fieldErrors.dateAccomplished && (
+                  <p className="mt-1 text-xs text-destructive">{fieldErrors.dateAccomplished}</p>
+                )}
               </div>
             </div>
 

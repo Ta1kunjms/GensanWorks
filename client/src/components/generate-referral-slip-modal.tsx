@@ -19,9 +19,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Download, Loader2, Eye, Info } from "lucide-react";
-import { jsPDF } from "jspdf";
-import html2canvas from "html2canvas";
+import { FileText, Download, Loader2, Eye, Info, Printer } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { authFetch } from "@/lib/auth";
+import { useFieldErrors, type FieldErrors } from "@/lib/field-errors";
 
 interface GenerateReferralSlipModalProps {
   open: boolean;
@@ -33,20 +34,97 @@ interface JobVacancy {
   id: string;
   positionTitle: string;
   establishmentName: string;
-  startingSalaryOrWage: number;
-  salaryType: string;
-  mainSkillOrSpecialization: string;
-  numberOfVacancies: number;
-  minimumEducationRequired: string;
+  startingSalaryOrWage?: number;
+  salaryType?: string;
+  mainSkillOrSpecialization?: string;
+  numberOfVacancies?: number;
+  minimumEducationRequired?: string;
   employerId?: string;
+  locationSummary?: string;
 }
+
+const parseJsonField = (value: unknown) => {
+  if (!value) return undefined;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return undefined;
+    }
+  }
+  if (typeof value === "object") {
+    return value as Record<string, any>;
+  }
+  return undefined;
+};
+
+const normalizeJobForReferral = (job: any): JobVacancy => {
+  const salaryInfo = parseJsonField(job?.salary) ?? job?.salary ?? {};
+  const salaryCandidate =
+    typeof job?.startingSalaryOrWage === "number"
+      ? job.startingSalaryOrWage
+      : typeof salaryInfo?.amount === "number"
+        ? salaryInfo.amount
+        : typeof salaryInfo?.min === "number"
+          ? salaryInfo.min
+          : typeof salaryInfo?.max === "number"
+            ? salaryInfo.max
+            : typeof job?.salaryAmount === "number"
+              ? job.salaryAmount
+              : undefined;
+
+  const salaryTypeCandidate =
+    job?.salaryType ||
+    job?.salaryPeriod ||
+    job?.salary?.period ||
+    salaryInfo?.period ||
+    salaryInfo?.type ||
+    salaryInfo?.frequency;
+
+  const positionTitle = job?.positionTitle || job?.title || "Untitled Position";
+  const establishmentName =
+    job?.establishmentName ||
+    job?.company ||
+    job?.companyName ||
+    job?.employerName ||
+    "Unspecified Employer";
+
+  const numberOfVacancies =
+    job?.numberOfVacancies ??
+    job?.vacantPositions ??
+    job?.openings ??
+    job?.vacancies ??
+    job?.vacantPosition ??
+    1;
+
+  const locationParts = [job?.location, job?.barangay, job?.municipality, job?.province]
+    .filter((part) => typeof part === "string" && part.trim() !== "")
+    .map((part) => part.trim());
+
+  return {
+    id: job?.id,
+    positionTitle,
+    establishmentName,
+    startingSalaryOrWage: salaryCandidate,
+    salaryType: typeof salaryTypeCandidate === "string" ? salaryTypeCandidate : undefined,
+    mainSkillOrSpecialization: job?.mainSkillOrSpecialization || job?.mainSkill,
+    numberOfVacancies,
+    minimumEducationRequired: job?.minimumEducationRequired || job?.minimumEducation,
+    employerId: job?.employerId,
+    locationSummary: locationParts.length ? Array.from(new Set(locationParts)).join(", ") : undefined,
+  };
+};
 
 export function GenerateReferralSlipModal({
   open,
   onOpenChange,
   applicant,
 }: GenerateReferralSlipModalProps) {
+  const queryClient = useQueryClient();
   const { toast } = useToast();
+  type ReferralSlipField = "selectedVacancy";
+  const { fieldErrors, clearFieldError, setErrorsAndFocus } =
+    useFieldErrors<ReferralSlipField>();
   const [vacancies, setVacancies] = useState<JobVacancy[]>([]);
   const [employersById, setEmployersById] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
@@ -108,16 +186,32 @@ export function GenerateReferralSlipModal({
   const fetchOpenVacancies = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/job-vacancies/open");
-      if (!res.ok) throw new Error("Failed to fetch vacancies");
-      const data = await res.json();
-      setVacancies(data || []);
+      let response = await authFetch("/api/admin/jobs");
+      if (!response.ok) {
+        // fall back to public jobs endpoint if admin route fails
+        response = await fetch("/api/jobs");
+      }
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to fetch jobs");
+      }
+      const payload = await response.json();
+      const jobsArray = Array.isArray(payload) ? payload : payload?.jobs || [];
+      const normalized = jobsArray
+        .filter((job: any) => {
+          const status = typeof job?.status === "string" ? job.status.toLowerCase() : "active";
+          return !job?.archived && ["active", "approved", "open", "published"].includes(status);
+        })
+        .map(normalizeJobForReferral);
+      setVacancies(normalized);
     } catch (error: any) {
+      console.error("Failed to load referral jobs", error);
       toast({
         title: "Error",
-        description: error.message,
+        description: error?.message || "Unable to load available jobs. Please try again.",
         variant: "destructive",
       });
+      setVacancies([]);
     } finally {
       setLoading(false);
     }
@@ -139,6 +233,7 @@ export function GenerateReferralSlipModal({
   const handleVacancySelect = (vacancyId: string) => {
     const vacancy = vacancies.find((v) => v.id === vacancyId);
     setSelectedVacancy(vacancy || null);
+    clearFieldError("selectedVacancy");
     // Pre-fill company and position fields when a vacancy is chosen
     if (vacancy) {
       setCompanyName(vacancy.establishmentName || "");
@@ -147,6 +242,10 @@ export function GenerateReferralSlipModal({
         const emp = employersById[vacancy.employerId];
         const addrParts = [emp.houseStreetVillage, emp.barangay, emp.municipality, emp.province].filter(Boolean);
         setCompanyAddress(addrParts.join(", "));
+      } else if (vacancy.locationSummary) {
+        setCompanyAddress(vacancy.locationSummary);
+      } else {
+        setCompanyAddress("");
       }
     }
   };
@@ -509,84 +608,96 @@ export function GenerateReferralSlipModal({
     `;
   };
 
-  const generatePDF = async () => {
+  const recordReferralSlip = async () => {
+    if (!selectedVacancy) return;
+
+    try {
+      const employerName =
+        selectedVacancy.establishmentName ||
+        companyName ||
+        (selectedVacancy.employerId ? employersById[selectedVacancy.employerId]?.companyName || employersById[selectedVacancy.employerId]?.name : "") ||
+        "Unspecified Employer";
+
+      const payload = {
+        referralId: referralNumber,
+        applicantId: applicant.id,
+        applicant: `${applicant.firstName} ${applicant.middleName || ""} ${applicant.surname}`.trim(),
+        employerId: selectedVacancy.employerId || null,
+        employer: employerName,
+        vacancyId: selectedVacancy.id,
+        vacancy: positionOverride || selectedVacancy.positionTitle,
+        barangay: applicant.barangay || null,
+        jobCategory: selectedVacancy.mainSkillOrSpecialization || selectedVacancy.locationSummary || null,
+        dateReferred: new Date().toISOString(),
+        status: "Pending",
+        feedback: "",
+        referralSlipNumber: referralNumber,
+        pesoOfficerName: pesoOfficer,
+        pesoOfficerDesignation: pesoDesignation,
+      };
+
+      const res = await authFetch("/api/referrals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || "Failed to record referral slip");
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["/api/referrals"] });
+    } catch (error: any) {
+      console.error("Failed to record referral slip:", error);
+      toast({
+        title: "Warning",
+        description: error?.message || "Referral slip printed but not saved to tracking table.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const printReferral = async () => {
     setGenerating(true);
     try {
       if (!selectedVacancy) {
-        toast({
-          title: "Error",
-          description: "Please select a job vacancy first",
-          variant: "destructive",
-        });
+        const nextErrors: FieldErrors<ReferralSlipField> = {
+          selectedVacancy: "Please select a job vacancy first",
+        };
+        setErrorsAndFocus(nextErrors);
         setGenerating(false);
         return;
       }
 
       const htmlContent = generateReferralSlipHTML();
-      const element = document.createElement("div");
-      element.innerHTML = htmlContent;
-      element.style.position = "absolute";
-      element.style.left = "-9999px";
-      document.body.appendChild(element);
+      const printWindow = window.open("", "_blank", "width=900,height=1200");
 
-      // Use html2canvas to render the strict A4 container at high DPI
-      const canvas = await html2canvas(element.querySelector('.container') as HTMLElement, {
-        scale: 2.5,
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#ffffff",
-      });
-
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const pageW = 210;
-      const pageH = 297;
-      const margin = 0; // container already includes internal margins
-      const availableW = pageW - margin * 2;
-      const availableH = pageH - margin * 2;
-
-      // Maintain aspect ratio and fit entirely within page
-      const imgAspect = canvas.width / canvas.height;
-      const targetW = availableW;
-      const targetH = targetW / imgAspect;
-      const finalW = targetH > availableH ? availableH * imgAspect : targetW;
-      const finalH = finalW / imgAspect;
-      const offsetX = (pageW - finalW) / 2;
-      const offsetY = (pageH - finalH) / 2;
-
-      pdf.addImage(imgData, "PNG", offsetX, offsetY, finalW, finalH);
-      pdf.save(`referral_slip_${referralNumber}.pdf`);
-
-      // Save referral slip information to database
-      try {
-        await fetch("/api/referral-slip", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            applicantId: applicant.id,
-            vacancyId: selectedVacancy.id,
-            employerId: selectedVacancy.employerId || "UNKNOWN",
-            referralSlipNumber: referralNumber,
-            pesoOfficerName: pesoOfficer,
-            pesoOfficerDesignation: pesoDesignation,
-          }),
-        });
-      } catch (error: any) {
-        console.error("Failed to save referral slip record:", error);
-        // Don't fail PDF generation if database save fails
+      if (!printWindow) {
+        throw new Error("Please allow popups to print the referral slip.");
       }
 
-      toast({
-        title: "Success",
-        description: "Referral slip generated and downloaded successfully",
-      });
+      printWindow.document.open();
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
 
-      document.body.removeChild(element);
+      setTimeout(() => {
+        try { printWindow.close(); } catch {}
+      }, 500);
+
+      await recordReferralSlip();
+
+      toast({
+        title: "Referral slip ready",
+        description: "Printed/Saved and logged to referral tracking.",
+      });
     } catch (error: any) {
-      console.error("PDF generation error:", error);
+      console.error("Print error:", error);
       toast({
         title: "Error",
-        description: "Failed to generate PDF: " + error.message,
+        description: error?.message || "Failed to print referral slip",
         variant: "destructive",
       });
     } finally {
@@ -594,13 +705,12 @@ export function GenerateReferralSlipModal({
     }
   };
 
-  const generateHTMLFile = () => {
+  const generateHTMLFile = async () => {
     if (!selectedVacancy) {
-      toast({
-        title: "Error",
-        description: "Please select a job vacancy first",
-        variant: "destructive",
-      });
+      const nextErrors: FieldErrors<ReferralSlipField> = {
+        selectedVacancy: "Please select a job vacancy first",
+      };
+      setErrorsAndFocus(nextErrors);
       return;
     }
 
@@ -615,9 +725,11 @@ export function GenerateReferralSlipModal({
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
+    await recordReferralSlip();
+
     toast({
       title: "Success",
-      description: "HTML file downloaded. You can print it as PDF from your browser.",
+      description: "HTML downloaded and referral logged.",
     });
   };
 
@@ -645,22 +757,20 @@ export function GenerateReferralSlipModal({
     <>
       {/* Main Modal */}
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-blue-600" />
-              Generate Job Referral Slip
-            </DialogTitle>
-            <DialogDescription>
-              Configure and generate an official referral slip for{" "}
-              <strong>
-                {applicant.firstName} {applicant.surname}
-              </strong>
-              . Referral #: <span className="font-mono text-sm">{referralNumber}</span>
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-5xl max-h-[90vh] p-0 flex flex-col overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 text-white">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-2xl">
+                <FileText className="h-5 w-5" />
+                Generate Job Referral Slip
+              </DialogTitle>
+              <DialogDescription className="text-blue-50">
+                Configure and generate an official referral slip for {applicant.firstName} {applicant.surname}. Referral #: <span className="font-mono text-sm">{referralNumber}</span>
+              </DialogDescription>
+            </DialogHeader>
+          </div>
 
-          <div className="space-y-6 py-4">
+          <div className="flex-1 overflow-y-auto bg-white px-6 py-4 space-y-6">
             {/* Step 1: Applicant Information */}
             <div className="border rounded-lg p-4 bg-slate-50">
               <h3 className="font-semibold text-slate-900 mb-3 text-sm">
@@ -693,9 +803,14 @@ export function GenerateReferralSlipModal({
               <h3 className="font-semibold text-slate-900 text-sm">
                 Step 2: Select Job Vacancy *
               </h3>
+              {fieldErrors.selectedVacancy && (
+                <p className="text-xs text-destructive" aria-invalid={!!fieldErrors.selectedVacancy} tabIndex={-1}>
+                  {fieldErrors.selectedVacancy}
+                </p>
+              )}
               <div className="flex gap-2">
                 <Select value={selectedVacancy?.id || ""} onValueChange={handleVacancySelect} disabled={loading}>
-                  <SelectTrigger className="flex-1">
+                  <SelectTrigger className="flex-1" aria-invalid={!!fieldErrors.selectedVacancy}>
                     <SelectValue placeholder={loading ? "Loading vacancies..." : "Choose a job vacancy..."} />
                   </SelectTrigger>
                   <SelectContent className="max-h-[250px]">
@@ -707,14 +822,22 @@ export function GenerateReferralSlipModal({
                         <p className="text-xs mt-1">Please create job vacancies in the Jobs section first</p>
                       </div>
                     ) : (
-                      vacancies.map((vacancy) => (
-                        <SelectItem key={vacancy.id} value={vacancy.id}>
-                          <div className="flex flex-col">
-                            <span>{vacancy.positionTitle} ({vacancy.numberOfVacancies} slots)</span>
-                            <span className="text-xs text-slate-500">{vacancy.establishmentName}</span>
-                          </div>
-                        </SelectItem>
-                      ))
+                      vacancies.map((vacancy) => {
+                        const slots = vacancy.numberOfVacancies ?? 1;
+                        return (
+                          <SelectItem key={vacancy.id} value={vacancy.id}>
+                            <div className="flex flex-col">
+                              <span>
+                                {vacancy.positionTitle} ({slots} {slots === 1 ? "slot" : "slots"})
+                              </span>
+                              <span className="text-xs text-slate-500">
+                                {vacancy.establishmentName}
+                                {vacancy.locationSummary ? ` • ${vacancy.locationSummary}` : ""}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        );
+                      })
                     )}
                   </SelectContent>
                 </Select>
@@ -847,12 +970,12 @@ export function GenerateReferralSlipModal({
               <Info className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-amber-800">
                 <strong>Important:</strong> The referral slip will include all applicant information, position details,
-                and a unique referral number ({referralNumber}). You can preview before generating the final PDF.
+                and a unique referral number ({referralNumber}). You can preview before printing.
               </p>
             </div>
           </div>
 
-          <DialogFooter className="flex gap-2 flex-col sm:flex-row justify-between">
+          <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:items-center justify-between border-t bg-white px-6 py-4">
             <div className="flex gap-2">
               <Button
                 variant="outline"
@@ -874,13 +997,13 @@ export function GenerateReferralSlipModal({
               </Button>
             </div>
             <Button
-              onClick={generatePDF}
+              onClick={printReferral}
               disabled={!selectedVacancy || generating}
               className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700"
             >
               {generating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              <Download className="h-4 w-4 mr-2" />
-              Generate PDF
+              <Printer className="h-4 w-4 mr-2" />
+              Print
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -888,29 +1011,31 @@ export function GenerateReferralSlipModal({
 
       {/* Preview Modal */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Eye className="h-5 w-5 text-blue-600" />
-              Referral Slip Preview
-            </DialogTitle>
-            <DialogDescription>
-              Review the referral slip before generating the final PDF. Referral #: <span className="font-mono">{referralNumber}</span>
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-5xl max-h-[90vh] p-0 flex flex-col overflow-hidden">
+          <div className="bg-gradient-to-r from-slate-900 to-slate-700 px-6 py-4 text-white">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-xl">
+                <Eye className="h-5 w-5" />
+                Referral Slip Preview
+              </DialogTitle>
+              <DialogDescription className="text-slate-200">
+                Review the referral slip before generating the final PDF. Referral #: <span className="font-mono">{referralNumber}</span>
+              </DialogDescription>
+            </DialogHeader>
+          </div>
 
-          <div className="border rounded-lg bg-white overflow-auto max-h-[60vh]">
+          <div className="flex-1 border-t border-slate-200 bg-white overflow-auto px-4 py-4">
             {renderPreviewContent()}
           </div>
 
-          <DialogFooter className="flex gap-2 flex-col sm:flex-row">
+          <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:items-center px-6 pb-4 pt-2 bg-white border-t">
             <Button variant="outline" onClick={() => setShowPreview(false)}>
               Close Preview
             </Button>
-            <Button onClick={generatePDF} disabled={generating} className="bg-blue-600 hover:bg-blue-700">
+            <Button onClick={printReferral} disabled={generating} className="bg-blue-600 hover:bg-blue-700">
               {generating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              <Download className="h-4 w-4 mr-2" />
-              Generate PDF
+              <Printer className="h-4 w-4 mr-2" />
+              Print
             </Button>
           </DialogFooter>
         </DialogContent>

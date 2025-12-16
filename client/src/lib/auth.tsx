@@ -6,6 +6,7 @@ export interface User {
   email: string;
   role: 'admin' | 'employer' | 'jobseeker' | 'freelancer';
   company?: string;
+  profileImage?: string | null;
 }
 
 interface AuthContextValue {
@@ -131,5 +132,25 @@ export async function authFetch(input: RequestInfo, init: RequestInit = {}) {
   const token = localStorage.getItem('gw_token');
   const headers = new Headers(init.headers || {});
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  return fetch(input, { ...init, headers });
+
+  const response = await fetch(input, { ...init, headers });
+
+  if (!response.ok) {
+    let message = `Request failed with status ${response.status}`;
+    try {
+      const data = await response.json();
+      if (typeof (data as any)?.message === 'string') {
+        message = (data as any).message;
+      } else if (typeof (data as any)?.error === 'string') {
+        message = (data as any).error;
+      } else if (typeof (data as any)?.error?.message === 'string') {
+        message = (data as any).error.message;
+      }
+    } catch {
+      // ignore JSON parse errors and fall back to default message
+    }
+    throw new Error(message);
+  }
+
+  return response;
 }

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useFieldErrors } from "@/lib/field-errors";
 import type { Referral } from "@shared/schema";
 
 interface MessageModalProps {
@@ -19,18 +20,17 @@ interface MessageModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+type MessageField = "message";
+
 export function MessageModal({ referral, open, onOpenChange }: MessageModalProps) {
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const { toast } = useToast();
+  const { fieldErrors, clearFieldError, setErrorsAndFocus } = useFieldErrors<MessageField>();
 
   const handleSend = async () => {
     if (!message.trim()) {
-      toast({
-        title: "Message required",
-        description: "Please enter a message before sending.",
-        variant: "destructive",
-      });
+      setErrorsAndFocus({ message: "Please enter a message before sending." });
       return;
     }
 
@@ -65,11 +65,20 @@ export function MessageModal({ referral, open, onOpenChange }: MessageModalProps
             <Textarea
               id="message"
               placeholder="Type your message here..."
-              className="min-h-[150px] resize-none"
+              aria-invalid={!!fieldErrors.message}
+              className="min-h-[150px] resize-none aria-[invalid=true]:border-destructive aria-[invalid=true]:focus-visible:ring-destructive/20"
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={(e) => {
+                setMessage(e.target.value);
+                if (fieldErrors.message) clearFieldError("message");
+              }}
               data-testid="textarea-message"
             />
+            {fieldErrors.message && (
+              <p className="text-xs text-destructive" data-testid="error-message">
+                {fieldErrors.message}
+              </p>
+            )}
           </div>
         </div>
 

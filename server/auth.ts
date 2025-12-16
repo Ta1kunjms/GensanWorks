@@ -128,13 +128,14 @@ export const ErrorCodes = {
   RESOURCE_NOT_FOUND: "RESOURCE_NOT_FOUND",
   DUPLICATE_EMAIL: "DUPLICATE_EMAIL",
   INTERNAL_SERVER_ERROR: "INTERNAL_SERVER_ERROR",
+  NOT_IMPLEMENTED: "NOT_IMPLEMENTED",
 } as const;
 
 // ============ PASSPORT: GOOGLE OAUTH ============
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || "http://localhost:5000/auth/google/callback";
+export const DEFAULT_GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || "http://localhost:5000/auth/google/callback";
 
 function isGoogleConfig(config: any): config is { clientId: string; clientSecret: string; callbackUrl?: string } {
   return (
@@ -148,7 +149,7 @@ export async function initGoogleOAuth() {
   // Prefer env vars, fallback to dynamic settings if available
   let clientID = GOOGLE_CLIENT_ID;
   let clientSecret = GOOGLE_CLIENT_SECRET;
-  let callbackURL = GOOGLE_CALLBACK_URL;
+  let callbackURL = DEFAULT_GOOGLE_CALLBACK_URL;
 
   // Always try to load from dynamic settings (async)
   try {
@@ -161,7 +162,7 @@ export async function initGoogleOAuth() {
       ) {
         clientID = google.config.clientId;
         clientSecret = google.config.clientSecret;
-        callbackURL = google.config.callbackUrl || GOOGLE_CALLBACK_URL;
+        callbackURL = google.config.callbackUrl || DEFAULT_GOOGLE_CALLBACK_URL;
         if (clientID && clientSecret) {
           console.log("[Auth] Registering Google OAuth strategy (async settings)...");
           setupStrategy(clientID, clientSecret, callbackURL);

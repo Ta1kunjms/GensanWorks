@@ -6,21 +6,25 @@
 import { useEffect, useState } from 'react';
 import { useLocation, Link } from 'wouter';
 import { useAuth } from '@/lib/auth';
-import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { AuthShell } from '@/components/auth/auth-shell';
 
 export default function JobseekerLoginPage() {
   const [, setLocation] = useLocation();
   const { login, isLoading } = useAuth();
-  const { toast } = useToast();
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [showPassword, setShowPassword] = useState(false);
   const [authSettings, setAuthSettings] = useState<{ providers: { id: string; enabled: boolean }[] }>({ providers: [] });
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/settings/auth');
+        const res = await fetch('/api/settings/auth/public');
         if (res.ok) setAuthSettings(await res.json());
       } catch {}
     })();
@@ -30,95 +34,140 @@ export default function JobseekerLoginPage() {
     e.preventDefault();
     setError('');
 
+    const nextErrors: Record<string, string> = {};
+    if (!formData.email.trim()) nextErrors.email = 'Email is required';
+    else if (!/^\S+@\S+\.\S+$/.test(formData.email.trim())) nextErrors.email = 'Enter a valid email';
+    if (!formData.password) nextErrors.password = 'Password is required';
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length) {
+      setTimeout(() => {
+        const el = document.querySelector<HTMLElement>("[aria-invalid='true']");
+        el?.focus?.();
+        el?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      }, 0);
+      return;
+    }
+
     try {
       await login(formData.email, formData.password);
       setLocation('/jobseeker/dashboard');
     } catch (err: any) {
       const errorMessage = err.message || 'Login failed';
       setError(errorMessage);
-      toast({
-        title: 'Login Error',
-        description: errorMessage,
-        variant: 'destructive',
-      });
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-lg shadow-xl p-8">
-          <div className="text-center mb-8">
-            <img src="/peso-gsc-logo.png" alt="PESO GenSan" className="mx-auto h-20 w-20 mb-4" />
-            <h1 className="text-3xl font-bold text-slate-900">GensanWorks</h1>
-            <p className="text-slate-600 mt-2">Jobseeker Portal</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-                {error}
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Email Address
-              </label>
-              <input
-                type="email"
-                required
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="jobseeker@example.com"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Password
-              </label>
-              <input
-                type="password"
-                required
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="••••••••"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-medium py-2 rounded-lg transition"
-            >
-              {isLoading ? 'Logging in...' : 'Login as Jobseeker'}
-            </button>
-
-            {authSettings.providers.find(p => p.id === 'google' && p.enabled) && (
-              <a href="/auth/google?role=jobseeker&prompt=select_account" className="mt-3 w-full inline-flex items-center justify-center gap-2 bg-white border border-slate-300 hover:border-purple-600 text-slate-900 py-2 rounded-lg transition shadow-sm hover:shadow">
-                <img src="https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png" alt="Google" className="w-5 h-5" />
-                Continue with Google
-              </a>
-            )}
-          </form>
-
-          <div className="mt-6 pt-6 border-t border-slate-200 space-y-3">
-            <p className="text-sm text-slate-600 text-center">
-              Don't have an account?{' '}
-              <Link href="/jobseeker/signup" className="text-purple-600 hover:text-purple-700 font-medium">
-                Sign up here
-              </Link>
-            </p>
-            <Link href="/" className="flex items-center justify-center text-sm text-slate-500 hover:text-slate-700">
-              <ArrowLeft className="w-4 h-4 mr-1" />
-              Back to home
+    <AuthShell
+      title="Sign in"
+      subtitle="Access your jobseeker dashboard and applications."
+      roleLabel="Jobseeker Portal"
+      formVariant="plain"
+      layout="split"
+      nav={{
+        loginHref: "/jobseeker/login",
+        joinHref: "/jobseeker/signup",
+        homeHref: "/",
+        aboutHref: "/about",
+        activePortalId: "jobseeker",
+      }}
+      footer={
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground text-center">
+            Don&apos;t have an account?{' '}
+            <Link href="/jobseeker/signup" className="font-medium text-foreground underline underline-offset-4 hover:text-foreground">
+              Create one
             </Link>
-          </div>
+          </p>
         </div>
-      </div>
-    </div>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Sign in failed</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Email</label>
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="email"
+              value={formData.email}
+              onChange={(e) => {
+                const v = e.target.value;
+                setFormData((prev) => ({ ...prev, email: v }));
+                setFieldErrors((prev) => {
+                  if (!prev.email) return prev;
+                  const next = { ...prev };
+                  delete next.email;
+                  return next;
+                });
+              }}
+              aria-invalid={!!fieldErrors.email}
+              className="h-11 pl-9"
+              placeholder="jobseeker@example.com"
+              autoComplete="email"
+            />
+          </div>
+          {fieldErrors.email ? <p className="text-xs text-destructive">{fieldErrors.email}</p> : null}
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Password</label>
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type={showPassword ? 'text' : 'password'}
+              value={formData.password}
+              onChange={(e) => {
+                const v = e.target.value;
+                setFormData((prev) => ({ ...prev, password: v }));
+                setFieldErrors((prev) => {
+                  if (!prev.password) return prev;
+                  const next = { ...prev };
+                  delete next.password;
+                  return next;
+                });
+              }}
+              aria-invalid={!!fieldErrors.password}
+              className="h-11 pl-9 pr-10"
+              placeholder="••••••••"
+              autoComplete="current-password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              disabled={isLoading}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+          {fieldErrors.password ? <p className="text-xs text-destructive">{fieldErrors.password}</p> : null}
+        </div>
+
+        <Button type="submit" disabled={isLoading} className="w-full">
+          {isLoading ? 'Signing in…' : 'Sign in'}
+        </Button>
+
+        {authSettings.providers.find((p) => p.id === 'google' && p.enabled) ? (
+          <Button variant="outline" className="w-full" asChild>
+            <a href="/auth/google?role=jobseeker&prompt=select_account&redirect=/oauth-callback">
+              <img
+                src="https://www.gstatic.com/images/branding/product/1x/googleg_32dp.png"
+                alt="Google"
+                className="h-5 w-5"
+              />
+              Continue with Google
+            </a>
+          </Button>
+        ) : null}
+      </form>
+    </AuthShell>
   );
 }

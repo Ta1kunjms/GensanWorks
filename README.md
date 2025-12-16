@@ -245,6 +245,16 @@ npm run db:reseed        # Clear and reseed database
 npm run db:migrate       # Generate migration files
 ```
 
+### Deterministic employer + job seeds
+```bash
+npx tsx scripts/generate-employer-job-seed.ts
+npx tsx scripts/seed-employers-with-jobs.ts
+```
+- Generates 20 employers (with `companyType`, `industry`, permit/government IDs, profile image URLs, etc.)
+- Generates 200 job vacancies (10 per employer) covering every dropdown option for `jobType`, `industry`, `salaryPeriod`, `status`, and `archived`
+- Output: `data/seed/employers-with-jobs.json` ready for import or further scripting
+- `seed-employers-with-jobs` reads the JSON and inserts it into the active database (hashing passwords, wiring employer/job relations, and cleaning old rows with the same IDs first)
+
 ### Testing
 ```bash
 npm test                 # Run test suite

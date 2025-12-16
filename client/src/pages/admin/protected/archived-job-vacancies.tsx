@@ -148,12 +148,8 @@ export default function ArchivedJobVacanciesPage() {
 
   return (
     <div className="space-y-6 p-6">
-      {/* Header with Back Button */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Archived Job Vacancies</h1>
-          <p className="text-gray-600 mt-2">Manage and restore your archived job listings</p>
-        </div>
+      {/* Header with Back Button (title handled by TopNavbar) */}
+      <div className="flex items-center justify-end">
         <Button 
           variant="outline" 
           onClick={() => navigate('/admin/jobs')}

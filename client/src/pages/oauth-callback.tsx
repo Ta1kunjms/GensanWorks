@@ -12,29 +12,31 @@ export default function OAuthCallbackPage() {
     const name = params.get("name") || "Google User";
     const email = params.get("email") || "";
     const role = (params.get("role") || "jobseeker") as "admin" | "employer" | "jobseeker" | "freelancer";
+    const applicantId = params.get("applicantId");
 
     // Debug log all params and location
-    console.log("[OAuthCallback] Params:", { token, name, email, role });
+    console.log("[OAuthCallback] Params:", { token, name, email, role, applicantId });
     console.log("[OAuthCallback] window.location:", window.location.href);
 
     if (token) {
-      setAuth(token, { id: email || "google-user", name, email, role });
-      console.log("[OAuthCallback] setAuth called", { token, user: { id: email || "google-user", name, email, role } });
-      // Check localStorage after setAuth
-      setTimeout(() => {
-        console.log("[OAuthCallback] localStorage gw_token:", localStorage.getItem('gw_token'));
-        console.log("[OAuthCallback] localStorage gw_user:", localStorage.getItem('gw_user'));
-        // Log navigation intent
-        if (role === "admin") console.log("[OAuthCallback] Navigating to /admin/dashboard");
-        else if (role === "employer") console.log("[OAuthCallback] Navigating to /employer/dashboard");
-        else if (role === "jobseeker" || role === "freelancer") console.log("[OAuthCallback] Navigating to /jobseeker/dashboard");
-        else console.log("[OAuthCallback] Navigating to /jobseeker/dashboard (fallback)");
-      }, 100);
-      // Redirect by role (fallback to jobseeker dashboard if role missing)
-      if (role === "admin") navigate("/admin/dashboard");
-      else if (role === "employer") navigate("/employer/dashboard");
-      else if (role === "jobseeker" || role === "freelancer") navigate("/jobseeker/dashboard");
-      else navigate("/jobseeker/dashboard");
+      // Use applicantId as user.id if present, else fallback to email
+      const userId = applicantId || email || "google-user";
+      // Persist token+user immediately and log results
+      try {
+        setAuth(token, { id: userId, name, email, role });
+        console.log("[OAuthCallback] setAuth called", { token, user: { id: userId, name, email, role } });
+        console.log("[OAuthCallback] localStorage gw_token after setAuth:", localStorage.getItem('gw_token'));
+        console.log("[OAuthCallback] localStorage gw_user after setAuth:", localStorage.getItem('gw_user'));
+      } catch (e) {
+        console.error('[OAuthCallback] setAuth error:', e);
+      }
+
+      // Do a hard redirect to ensure the SPA initialises with auth state
+      const target = role === "admin" ? "/admin/dashboard" : role === "employer" ? "/employer/dashboard" : "/jobseeker/dashboard";
+      console.log('[OAuthCallback] Redirecting (replace) to', target);
+      // Use replace to avoid keeping token-containing URL in history
+      window.location.replace(target);
+      return;
     } else {
       // If no token, try to fetch user profile and redirect by role
       fetch("/api/profile", { credentials: "include" })

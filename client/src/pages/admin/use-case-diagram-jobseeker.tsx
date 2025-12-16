@@ -29,7 +29,7 @@ export default function UseCaseDiagramJobseeker() {
     <div className="p-6">
       <div className="max-w-6xl mx-auto space-y-6">
         <div className="flex items-center justify-between bg-white p-4 rounded-lg shadow-sm">
-          <h1 className="text-2xl font-bold">Use Case Diagram — Jobseeker</h1>
+          <p className="text-2xl font-bold">Use Case Diagram — Jobseeker</p>
           <div className="flex gap-2">
             <Button onClick={() => window.print()} variant="outline" className="gap-2"><Printer className="w-4 h-4"/>Print</Button>
             <Button onClick={generatePDF} disabled={isGenerating} className="gap-2"><Download className="w-4 h-4"/>{isGenerating? 'Generating...' : 'Download PDF'}</Button>

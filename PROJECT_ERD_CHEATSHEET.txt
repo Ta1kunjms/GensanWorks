@@ -1,0 +1,284 @@
+GensanWorks — ERD Cheat-Sheet (schema-level, Dec 15, 2025)
+
+Source of truth used for this sheet
+- server/unified-schema.ts (Drizzle schema; supports SQLite by default, Postgres optional)
+- Note: the schema mostly does NOT declare explicit foreign keys (no .references()). Relationships are logical/implicit via “*_id” columns.
+
+Legend
+- PK = primary key
+- UQ = unique index
+- FK? = logical foreign key (not enforced unless DB/migrations enforce it)
+- JSON = stored as JSON (Postgres) or JSON-text (SQLite { mode: "json" })
+
+--------------------------------------------------------------------
+1) Core relationship map (high value for an ERD diagram)
+
+Primary entities
+- users (jobseekers/freelancers; also holds NSRP profile fields)
+- employers
+- jobs
+
+Core join entities
+- applications (job applications)
+- referrals (referral slip tracking)
+
+Supporting entities
+- admins
+- admin_access_requests
+- notifications
+- messages
+- notes
+- sessions
+- employer_requirements
+- job_requirements
+- skill_suggestions
+
+Logical relationships (cardinality you can diagram)
+- employers (1) —— (many) jobs
+  - jobs.employer_id -> employers.id
+
+- jobs (1) —— (many) applications
+  - applications.job_id -> jobs.id
+
+- users (1) —— (many) applications
+  - applications.applicant_id -> users.id
+
+- employers (1) —— (many) applications (denormalized link)
+  - applications.employer_id -> employers.id (present; may be redundant because job -> employer)
+
+- users (1) —— (many) referrals
+  - referrals.applicant_id -> users.id
+
+- employers (1) —— (many) referrals
+  - referrals.employer_id -> employers.id (nullable)
+
+- jobs (0..1) —— (many) referrals (optional / legacy-style)
+  - referrals.vacancy_id is a free text pointer; in practice it often represents a job/vacancy id
+
+- employers (1) —— (0..1) employer_requirements
+  - employer_requirements.employer_id -> employers.id
+
+- jobs (1) —— (0..1) job_requirements
+  - job_requirements.job_id -> jobs.id
+  - job_requirements.employer_id -> employers.id (nullable)
+
+Role-polymorphic relationships (IDs can point to different tables depending on role)
+- messages.sender_id / receiver_id
+  - if sender_role is employer -> sender_id likely equals employers.id
+  - if sender_role is jobseeker/freelancer -> sender_id likely equals users.id
+  - same logic for receiver_id + receiver_role
+
+- notifications.user_id (nullable)
+  - can target a specific “user-like” record; role indicates which domain (admin/employer/jobseeker/freelancer)
+  - admins are stored in admins table, not users
+
+--------------------------------------------------------------------
+2) Tables (columns grouped for diagramming)
+
+A) admins
+- PK: id
+- UQ: email (admins_email_unique)
+- Columns:
+  - name, email, password_hash, role (always "admin")
+  - created_at, updated_at
+
+B) users (jobseeker/freelancer + NSRP profile)
+- PK: id
+- UQ: email (users_email_unique)
+- UQ: nsrp_number (users_nsrp_unique)
+- Auth/account:
+  - email, password_hash, has_account (bool), role (jobseeker/freelancer)
+  - name, profile_image
+  - registered_at, last_login_at
+- Identity + demographics:
+  - surname, first_name, middle_name, last_name, suffix
+  - birth_date/date_of_birth, sex, gender, religion, civil_status
+  - height, weight, blood_type
+- Contact + address:
+  - contact_number
+  - address, house_street_village, barangay, municipality, province, zip_code
+- Employment/NSRP fields:
+  - employment_status (+ detail/category/reason fields)
+  - employment_type, employment_type_4, months_unemployed
+  - OFW/4Ps flags: is_ofw, ofw_country, is_former_ofw, former_ofw_country, return_to_ph_date, is_4ps_beneficiary
+  - government id fields: government_id_type, government_id_number
+  - education_level, course
+  - willing_to_relocate, willing_to_work_overseas
+  - registration_date, nsrp_registration_no, nsrp_number
+- JSON columns (stored as JSON/text):
+  - job_preferences, preferred_occupations, preferred_locations, preferred_overseas_countries
+  - education, technical_training, professional_licenses, language_proficiency, work_experience
+  - skills, other_skills
+  - attachments
+- Other:
+  - notes (text), archived (bool)
+  - created_at, updated_at
+
+C) employers
+- PK: id
+- Profile / organization:
+  - establishment_name (required), name, trade_name
+  - address components: house_street_village, barangay, municipality, province, complete_address
+  - address_details (JSON)
+  - contact_number, contact_email, phone, email
+  - contact_person (JSON), alternate_contacts (JSON)
+- SRS / compliance:
+  - number_of_paid_employees, number_of_vacant_positions
+  - industry_codes (JSON), industry_type (JSON), company_type/company_industry/company_size
+  - requirements (JSON), attachments (JSON)
+  - various registration identifiers and officer fields (TIN, permits, etc.)
+  - file attachment pointer fields (srs_form_file, business_permit_file, bir2303_file, etc.)
+- Account:
+  - password_hash (nullable), has_account (bool)
+  - account_status (default pending), created_by, reviewed_by, reviewed_at, rejection_reason
+- State:
+  - archived (bool), archived_at
+  - status, profile_image
+  - created_at, updated_at
+
+D) jobs
+- PK: id
+- FK?: employer_id -> employers.id (nullable in schema but treated as owned by an employer)
+- Core job posting:
+  - position_title (required)
+  - description, employment_type, location
+  - status (default "pending"), job_status
+  - skills (text)
+- Compensation:
+  - salary_min, salary_max, salary_period
+  - salary_amount, salary_type, salary_period_raw
+  - salary (JSON), starting_salary_or_wage
+- Requirements/metadata:
+  - requirements (JSON)
+  - contact (JSON)
+  - attachments (JSON)
+  - account_metadata (JSON)
+  - industry_codes (JSON)
+- Additional “job card” fields:
+  - qualifications, responsibilities
+  - vacancies, vacant_positions, paid_employees
+  - job_category, nsrp_job_code
+  - job_compensation_type/details, job_benefits, job_requirements
+  - job_experience_level, job_education_level
+  - job_shift, job_schedule
+  - job_application_deadline
+  - job_contact_person/email/phone
+- Location fields:
+  - barangay, municipality, province
+- Archiving:
+  - archived (bool), archived_at
+- Timestamps:
+  - created_at, updated_at
+
+E) applications
+- PK: id
+- FK?: job_id -> jobs.id (required)
+- FK?: applicant_id -> users.id (nullable in schema; usually present)
+- FK?: employer_id -> employers.id (nullable)
+- Columns:
+  - applicant_name (denormalized)
+  - cover_letter, resume_url
+  - status enum: pending | reviewed | shortlisted | interview | hired | rejected | withdrawn
+  - notes, feedback
+  - created_at, updated_at
+
+F) referrals
+- PK: referral_id
+- FK?: applicant_id -> users.id (required)
+- FK?: employer_id -> employers.id (nullable)
+- FK?: vacancy_id -> jobs.id (nullable; name suggests “vacancy”, stored as text)
+- Columns:
+  - applicant (denormalized name), employer (denormalized name), vacancy (denormalized)
+  - barangay, job_category
+  - date_referred
+  - status enum: Pending | Hired | Rejected | For Interview | Withdrawn
+  - feedback
+  - referral_slip_number
+  - peso_officer_name, peso_officer_designation
+  - created_at, updated_at
+
+G) notifications
+- PK: id
+- FK?: user_id -> users.id OR employers.id OR admins.id (polymorphic; role indicates)
+- Columns:
+  - role: admin | employer | jobseeker | freelancer
+  - type: system | job | application | message
+  - message
+  - read (bool)
+  - created_at, updated_at
+
+H) messages
+- PK: id
+- FK?: sender_id / receiver_id (polymorphic by sender_role/receiver_role)
+- Columns:
+  - sender_role enum: employer | jobseeker | freelancer
+  - receiver_role enum: employer | jobseeker | freelancer
+  - subject (nullable)
+  - content
+  - is_read (bool)
+  - created_at, updated_at
+
+I) notes
+- PK: id
+- Columns:
+  - title, body
+  - created_at, updated_at
+
+J) admin_access_requests
+- PK: id
+- Columns:
+  - name, email, phone, organization
+  - status (default pending)
+  - created_at, updated_at
+
+K) employer_requirements
+- PK: id
+- FK?: employer_id -> employers.id (required)
+- Columns:
+  - requirement_data (JSON)
+  - booleans + attachments for submitted docs:
+    - srs_form_submitted + attachment
+    - business_permit_submitted + attachment
+    - bir2303_submitted + attachment
+    - company_profile_submitted + attachment
+    - dole_certification_submitted + attachment
+  - other_documents (JSON)
+  - created_at, updated_at
+
+L) job_requirements
+- PK: id
+- FK?: job_id -> jobs.id (required)
+- FK?: employer_id -> employers.id (nullable)
+- Columns:
+  - requirement_data (JSON)
+  - booleans + attachments:
+    - referral_slip_submitted + attachment
+    - employment_contract_submitted + attachment
+    - medical_certificate_submitted + attachment
+    - barangay_clearance_submitted + attachment
+    - police_clearance_submitted + attachment
+  - additional_documents (JSON)
+  - created_at, updated_at
+
+M) skill_suggestions
+- PK: id
+- UQ: normalized_name (skill_suggestions_normalized_unique)
+- Columns:
+  - name, normalized_name
+  - created_at, updated_at
+
+N) sessions
+- PK: sid
+- Columns:
+  - sess (JSON)
+  - expire (integer)
+- Note: the application primarily uses JWT Bearer; sessions exist for compatibility/Passport but may be unused.
+
+--------------------------------------------------------------------
+3) Diagram notes / pitfalls
+- “users” vs “admins”: admins are stored in a separate admins table; jobseekers/freelancers are in users.
+- Many relationships are “soft”: the schema does not declare references(), so your ERD should label them as logical FKs.
+- Several tables store both IDs and denormalized names (applications.applicant_name, referrals.applicant/employer/vacancy). This is deliberate for reporting/printing.
+- JSON fields are common (NSRP profile sections, requirements, attachments). In an ERD, you can model them as a single JSON attribute per group.
+
+END

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { formatDistanceToNow, format, differenceInMinutes, differenceInHours, differenceInDays, isYesterday } from 'date-fns';
 import { AlertCircle, ArrowUpDown, Search, RotateCcw, Calendar, ArrowLeft, Trash2 } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { ViewEmployerModal } from '@/components/view-employer-modal';
 import { Badge } from '@/components/ui/badge';
+import { authFetch } from '@/lib/auth';
 
 interface Employer {
   id: string;
@@ -58,7 +60,7 @@ export default function ArchivedEmployersPage() {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('/api/employers/archived');
+      const response = await authFetch('/api/employers/archived');
       
       if (!response.ok) {
         throw new Error(`Failed to fetch archived employers: ${response.status}`);
@@ -138,9 +140,11 @@ export default function ArchivedEmployersPage() {
     setIsProcessing(true);
     try {
       if (confirmAction === 'restore') {
-        const response = await fetch(`/api/employers/${confirmEmployerId}/unarchive`, {
+
+        const response = await authFetch(`/api/employers/${confirmEmployerId}/archive`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ archived: false }),
         });
 
         if (!response.ok) {
@@ -155,7 +159,7 @@ export default function ArchivedEmployersPage() {
         setArchivedEmployers(prev => prev.filter(e => e.id !== confirmEmployerId));
         setFilteredEmployers(prev => prev.filter(e => e.id !== confirmEmployerId));
       } else if (confirmAction === 'delete') {
-        const response = await fetch(`/api/employers/${confirmEmployerId}`, {
+        const response = await authFetch(`/api/employers/${confirmEmployerId}`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
         });
@@ -212,12 +216,8 @@ export default function ArchivedEmployersPage() {
 
   return (
     <div className="space-y-6 p-6">
-      {/* Header with Back Button */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Archived Employers</h1>
-          <p className="text-gray-600 mt-2">Manage and restore your archived employer listings</p>
-        </div>
+      {/* Header with Back Button (title handled by TopNavbar) */}
+      <div className="flex items-center justify-end">
         <Button 
           variant="outline" 
           onClick={() => navigate('/admin/employers')}
@@ -410,11 +410,38 @@ export default function ArchivedEmployersPage() {
                   </div>
                 )}
 
-                {/* Archive Date */}
-                <div className="flex items-center gap-2 text-sm text-gray-600">
+                {/* Archive Date - Enhanced Human Friendly */}
+                <div className={
+                  `flex items-center gap-2 text-sm ${(() => {
+                    const archivedDate = employer.archivedAt ? new Date(employer.archivedAt) : (employer.createdAt ? new Date(employer.createdAt) : null);
+                    if (!archivedDate) return 'text-gray-600';
+                    const now = new Date();
+                    const diffHours = differenceInHours(now, archivedDate);
+                    return diffHours < 24 ? 'text-orange-700' : 'text-gray-600';
+                  })()}`
+                }>
                   <Calendar className="h-4 w-4" />
-                  <span>
-                    Archived {new Date(employer.archivedAt || employer.createdAt || 0).toLocaleDateString()}
+                  <span
+                    title={(() => {
+                      const archivedDate = employer.archivedAt ? new Date(employer.archivedAt) : (employer.createdAt ? new Date(employer.createdAt) : null);
+                      if (!archivedDate) return '';
+                      return format(archivedDate, 'PPpp');
+                    })()}
+                  >
+                    {(() => {
+                      const archivedDate = employer.archivedAt ? new Date(employer.archivedAt) : (employer.createdAt ? new Date(employer.createdAt) : null);
+                      if (!archivedDate) return null;
+                      const now = new Date();
+                      const diffMins = differenceInMinutes(now, archivedDate);
+                      const diffHours = differenceInHours(now, archivedDate);
+                      const diffDays = differenceInDays(now, archivedDate);
+                      if (diffMins < 1) return 'Archived just now';
+                      if (diffMins < 60) return `Archived ${diffMins} minute${diffMins === 1 ? '' : 's'} ago`;
+                      if (diffHours < 24) return `Archived ${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+                      if (isYesterday(archivedDate)) return 'Archived yesterday';
+                      if (diffDays < 7) return `Archived ${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+                      return `Archived on ${format(archivedDate, 'MMM d, yyyy')}`;
+                    })()}
                   </span>
                 </div>
 
@@ -488,6 +515,10 @@ export default function ArchivedEmployersPage() {
           open={viewModalOpen}
           onOpenChange={setViewModalOpen}
           employer={selectedEmployer}
+          onEmployerUpdated={() => {
+            fetchArchivedEmployers();
+            setSelectedEmployer(null);
+          }}
         />
       )}
     </div>

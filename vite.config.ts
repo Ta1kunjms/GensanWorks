@@ -1,34 +1,45 @@
+
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+
 import path from "path";
+
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+// Statically import optional plugins
+// Use require for optional plugins for CJS/TypeScript compatibility
+let cartographer, devBanner;
+try {
+  cartographer = require("@replit/vite-plugin-cartographer");
+} catch (e) {
+  cartographer = null;
+}
+try {
+  devBanner = require("@replit/vite-plugin-dev-banner");
+} catch (e) {
+  devBanner = null;
+}
+
+const plugins = [
+  react(),
+  runtimeErrorOverlay(),
+];
+if (process.env.NODE_ENV !== "production" && process.env.REPL_ID !== undefined) {
+  if (cartographer) plugins.push(cartographer());
+  if (devBanner) plugins.push(devBanner());
+}
 
 export default defineConfig({
-  plugins: [
-    react(),
-    runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer(),
-          ),
-          await import("@replit/vite-plugin-dev-banner").then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
-  ],
+  plugins,
   resolve: {
     alias: {
-      "@": path.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path.resolve(import.meta.dirname, "shared"),
-      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+      "@": path.resolve(process.cwd(), "client", "src"),
+      "@shared": path.resolve(process.cwd(), "shared"),
+      "@assets": path.resolve(process.cwd(), "attached_assets"),
     },
   },
-  root: path.resolve(import.meta.dirname, "client"),
+  root: path.resolve(process.cwd(), "client"),
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    outDir: path.resolve(process.cwd(), "dist/public"),
     emptyOutDir: true,
   },
   server: {
@@ -36,5 +47,15 @@ export default defineConfig({
       strict: true,
       deny: ["**/.*"],
     },
+  },
+  optimizeDeps: {
+    // Pre-bundle heavy dependencies for faster dev server
+    include: [
+      'react',
+      'react-dom',
+      'wouter',
+      '@tanstack/react-query',
+      'lucide-react',
+    ],
   },
 });

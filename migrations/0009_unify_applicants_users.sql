@@ -7,7 +7,7 @@ ALTER TABLE applicants ADD COLUMN role TEXT DEFAULT 'jobseeker';
 ALTER TABLE applicants ADD COLUMN has_account INTEGER DEFAULT 0;
 
 -- Make email unique in applicants
-CREATE UNIQUE INDEX IF NOT EXISTS applicants_email_unique ON applicants(email);
+-- CREATE UNIQUE INDEX IF NOT EXISTS applicants_email_unique ON applicants(email);
 
 -- Migrate existing users table data to applicants (if any jobseekers exist)
 -- This preserves any jobseekers that were created in the old users table

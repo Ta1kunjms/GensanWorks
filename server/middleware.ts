@@ -3,10 +3,11 @@ import { verifyToken, JWTPayload, createErrorResponse, ErrorCodes } from "./auth
 
 // ============ EXTEND EXPRESS REQUEST TYPE ============
 
+import type { User } from "@shared/schema";
 declare global {
   namespace Express {
     interface Request {
-      user?: JWTPayload;
+      user?: User;
     }
   }
 }
@@ -37,7 +38,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
       );
     }
 
-    req.user = payload;
+    req.user = payload as User;
     next();
   } catch (error) {
     return res.status(500).json(
@@ -53,7 +54,8 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
 
 export function roleMiddleware(...allowedRoles: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.user) {
+    const user = req.user as import("@shared/schema").User;
+    if (!user) {
       return res.status(401).json(
         createErrorResponse(
           ErrorCodes.UNAUTHORIZED,
@@ -62,7 +64,7 @@ export function roleMiddleware(...allowedRoles: string[]) {
       );
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
+    if (!user || !allowedRoles.includes(user.role)) {
       return res.status(403).json(
         createErrorResponse(
           ErrorCodes.FORBIDDEN,
@@ -87,7 +89,8 @@ export function adminOnly(req: Request, res: Response, next: NextFunction) {
     );
   }
 
-  if (req.user.role !== "admin") {
+  const user = req.user as import("@shared/schema").User;
+  if (!user || user.role !== "admin") {
     return res.status(403).json(
       createErrorResponse(
         ErrorCodes.FORBIDDEN,
@@ -148,8 +151,8 @@ export function requestLogger(req: Request, res: Response, next: NextFunction) {
       path: req.path,
       status: res.statusCode,
       duration: `${duration}ms`,
-      user: req.user?.id || "anonymous",
-      role: req.user?.role || "none",
+      user: (req.user as import("@shared/schema").User)?.id || "anonymous",
+      role: (req.user as import("@shared/schema").User)?.role || "none",
     };
 
     // Log important events

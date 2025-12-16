@@ -51,7 +51,7 @@ export default function JobseekerUseCases() {
         <div className="bg-white rounded-lg shadow-sm p-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Jobseeker Use Case Descriptions</h1>
+              <p className="text-3xl font-bold text-gray-900">Jobseeker Use Case Descriptions</p>
               <p className="text-gray-600 mt-2">Comprehensive list of jobseeker workflows</p>
             </div>
             <div className="flex gap-3">

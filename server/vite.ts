@@ -1,3 +1,9 @@
+
+
+// Always use process.cwd() for directory resolution (ESM/CJS safe)
+const _dirname = process.cwd();
+
+
 import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
@@ -5,6 +11,9 @@ import { createServer as createViteServer, createLogger } from "vite";
 import { type Server } from "http";
 import viteConfig from "../vite.config";
 import { nanoid } from "nanoid";
+
+// __dirname is available in CJS and polyfilled in ESM entrypoints
+const resolvedViteConfig = viteConfig;
 
 const viteLogger = createLogger();
 
@@ -20,6 +29,10 @@ export function log(message: string, source = "express") {
 }
 
 export async function setupVite(app: Express, server: Server) {
+  // Cache-bust the entrypoint once per dev-server run (not on every request).
+  // Per-request busting forces a full module re-fetch which is especially slow over tunnels.
+  const devBuildId = nanoid();
+
   const serverOptions = {
     middlewareMode: true,
     hmr: { server },
@@ -27,7 +40,7 @@ export async function setupVite(app: Express, server: Server) {
   };
 
   const vite = await createViteServer({
-    ...viteConfig,
+    ...resolvedViteConfig,
     configFile: false,
     customLogger: {
       ...viteLogger,
@@ -46,18 +59,13 @@ export async function setupVite(app: Express, server: Server) {
     const url = req.originalUrl;
 
     try {
-      const clientTemplate = path.resolve(
-        import.meta.dirname,
-        "..",
-        "client",
-        "index.html",
-      );
+      const clientTemplate = path.join(process.cwd(), "client", "index.html");
 
       // always reload the index.html file from disk incase it changes
       let template = await fs.promises.readFile(clientTemplate, "utf-8");
       template = template.replace(
         `src="/src/main.tsx"`,
-        `src="/src/main.tsx?v=${nanoid()}"`,
+        `src="/src/main.tsx?v=${devBuildId}"`,
       );
       const page = await vite.transformIndexHtml(url, template);
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
@@ -69,18 +77,45 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
-  const distPath = path.resolve(import.meta.dirname, "public");
+  const distPath = path.resolve(_dirname, "dist", "public");
 
   if (!fs.existsSync(distPath)) {
-    throw new Error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`,
+    console.warn(
+      `[serveStatic] Missing build directory at ${distPath}. Skipping static middleware (API routes still available).`,
     );
+    return;
   }
 
-  app.use(express.static(distPath));
+  app.use(
+    express.static(distPath, {
+      index: false,
+      setHeaders: (res, filePath) => {
+        // Aggressively cache fingerprinted build assets.
+        // Keep HTML un-cached to allow new deployments to load immediately.
+        if (filePath.endsWith(".html")) {
+          res.setHeader(
+            "Cache-Control",
+            "no-store, no-cache, must-revalidate, proxy-revalidate",
+          );
+          res.setHeader("Pragma", "no-cache");
+          res.setHeader("Expires", "0");
+          return;
+        }
+
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      },
+    }),
+  );
 
   // fall through to index.html if the file doesn't exist
   app.use(/.*/, (_req, res) => {
+    res.setHeader(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate, proxy-revalidate",
+    );
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }

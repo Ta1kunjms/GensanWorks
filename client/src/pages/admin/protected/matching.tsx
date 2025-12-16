@@ -3,21 +3,35 @@
  * Route: /admin/matching
  * Only accessible to users with role='admin'
  */
-import { useState } from "react";
-import type { JobVacancy as BaseJobVacancy } from "@shared/schema";
+import { useMemo, useState } from "react";
+import type { Job } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Search, Wand2, Briefcase, DollarSign, Calendar } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Briefcase, MapPin, RefreshCw, Search, Wand2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AIJobMatchingModal } from "@/components/ai-job-matching-modal";
+import { authFetch } from "@/lib/auth";
 
-type AdminJobVacancy = BaseJobVacancy & {
-  vacantPositions?: number;
-  startingSalaryOrWage?: number;
-  archived?: boolean;
+type AdminJobVacancy = Job & {
+  employmentType?: string | null;
+};
+
+const statusAliasMap: Record<string, "pending" | "active" | "rejected" | "draft"> = {
+  approved: "active",
+  published: "active",
+  open: "active",
+  closed: "pending",
+  archived: "pending",
+};
+
+const normalizeStatus = (status?: string) => {
+  const value = (status ?? "pending").toLowerCase();
+  if (statusAliasMap[value]) {
+    return statusAliasMap[value];
+  }
+  return ["pending", "active", "rejected", "draft"].includes(value) ? value : "pending";
 };
 
 interface Applicant {
@@ -33,198 +47,193 @@ interface Applicant {
   workExperience?: any[];
 }
 
+const normalizeEmploymentStatus = (value?: string) => (value ?? "").trim().toLowerCase();
+
+const isEmployedStatus = (value?: string) => {
+  const normalized = normalizeEmploymentStatus(value);
+  return ["employed", "wage employed", "self-employed", "self employed"].includes(normalized);
+};
+
 export default function AdminMatchingPage() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedJobForMatching, setSelectedJobForMatching] = useState<AdminJobVacancy | null>(null);
   const [matchingModalOpen, setMatchingModalOpen] = useState(false);
 
-  // Fetch job vacancies data
-  const { data: jobsData, isLoading: jobsLoading } = useQuery({
-    queryKey: ["/api/job-vacancies"],
+  const {
+    data: jobsData,
+    isLoading: jobsLoading,
+    refetch: refetchJobs,
+  } = useQuery({
+    queryKey: ["/api/admin/jobs"],
     queryFn: async () => {
-      const res = await fetch("/api/job-vacancies");
-      if (!res.ok) throw new Error("Failed to fetch job vacancies");
-      return res.json();
+      const res = await authFetch("/api/admin/jobs");
+      if (!res.ok) throw new Error("Failed to fetch admin jobs");
+      const data = await res.json();
+      return Array.isArray(data) ? data : data?.jobs || [];
     },
   });
 
-  // Fetch applicants data
-  const { data: applicantsData, isLoading: applicantsLoading } = useQuery({
+  const {
+    data: applicantsData,
+    isLoading: applicantsLoading,
+    refetch: refetchApplicants,
+  } = useQuery({
     queryKey: ["/api/applicants"],
     queryFn: async () => {
-      const res = await fetch("/api/applicants");
+      const res = await authFetch("/api/applicants");
       if (!res.ok) throw new Error("Failed to fetch applicants");
       return res.json();
     },
   });
 
-  const jobs: AdminJobVacancy[] = Array.isArray(jobsData)
-    ? jobsData
-    : (jobsData?.vacancies ?? []);
+  const jobs: AdminJobVacancy[] = Array.isArray(jobsData) ? jobsData : jobsData ?? [];
+
+  const approvedJobs = useMemo(() => {
+    return jobs.filter((job) => !job.archived && normalizeStatus(job.status) === "active");
+  }, [jobs]);
   const applicants: Applicant[] = Array.isArray(applicantsData)
     ? applicantsData
     : (applicantsData?.applicants ?? applicantsData ?? []);
 
-  // Filter jobs based on search query
-  const filteredJobs = jobs.filter(job => 
-    job.positionTitle?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    job.establishmentName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    job.mainSkillOrSpecialization?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredJobs = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return approvedJobs.filter((job) => {
+      if (!query) return true;
 
-  const handleRunAutoMatch = () => {
-    toast({
-      title: "Auto-Matching Started",
-      description: "Analyzing applicants and job requirements...",
+      const haystack = [
+        job.positionTitle,
+        job.establishmentName,
+        job.mainSkillOrSpecialization,
+        job.location,
+        job.skills,
+      ]
+        .map((value) => (value ? value.toLowerCase() : ""))
+        .join(" ");
+      return haystack.includes(query);
     });
-    // Implement auto-matching algorithm here
+  }, [approvedJobs, searchQuery]);
+
+  const availableApplicants = applicants.filter((a) => !isEmployedStatus(a.employmentStatus)).length;
+  const isLoading = jobsLoading || applicantsLoading;
+
+  const handleRefresh = () => {
+    refetchJobs();
+    refetchApplicants();
   };
 
-  if (jobsLoading || applicantsLoading) {
-    return (
-      <div className="flex-1 overflow-auto">
-        <div className="container mx-auto p-6">
-          <p className="text-center text-slate-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  const openMatchingModal = (job: AdminJobVacancy) => {
+    setSelectedJobForMatching(job);
+    setMatchingModalOpen(true);
+  };
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="container mx-auto p-6 space-y-6 max-w-[1920px]">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Job Matching</h1>
-            <p className="text-slate-600 dark:text-slate-400 mt-1">Match applicants with job opportunities</p>
+      <div className="bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 min-h-screen">
+          <div className="container mx-auto max-w-[1600px] space-y-6 p-6">
+          <div className="flex flex-wrap gap-3 justify-end">
+            <Button variant="outline" className="gap-2" onClick={handleRefresh}>
+              <RefreshCw className="h-4 w-4" />
+              Refresh data
+            </Button>
           </div>
-          <Button className="gap-2" onClick={handleRunAutoMatch}>
-            <Wand2 className="h-4 w-4" />
-            Run Auto-Match
-          </Button>
-        </div>
 
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search jobs by title, company, or location..."
-            className="pl-9 w-full"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Card className="border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 shadow-sm">
+              <CardContent className="pt-6">
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Approved jobs</p>
+                <p className="text-3xl font-bold text-slate-900 dark:text-white">{approvedJobs.length}</p>
+              </CardContent>
+            </Card>
+            <Card className="border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 shadow-sm">
+              <CardContent className="pt-6">
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Available applicants</p>
+                <p className="text-3xl font-bold text-slate-900 dark:text-white">{availableApplicants}</p>
+              </CardContent>
+            </Card>
+          </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">Total Jobs</div>
-              <div className="text-2xl font-bold text-slate-900 dark:text-white">{jobs.length}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">Available Applicants</div>
-              <div className="text-2xl font-bold text-slate-900 dark:text-white">
-                {applicants.filter(a => a.employmentStatus !== "Employed").length}
+          <div className="space-y-4">
+            <div className="flex gap-3 flex-col md:flex-row">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  type="text"
+                  placeholder="Search approved jobs by title, employer, or skills..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 bg-white/90 dark:bg-slate-800/80"
+                />
               </div>
-            </CardContent>
-          </Card>
-        </div>
+              <Button variant="outline" className="gap-2" onClick={handleRefresh}>
+                <RefreshCw size={16} />
+                Refresh
+              </Button>
+            </div>
+          </div>
 
-        {/* Jobs Grid */}
-        {filteredJobs.length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <p className="text-slate-600 dark:text-slate-400">No jobs found</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredJobs.map((job) => (
-              <div key={job.id} className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                {/* Header */}
-                <div className="p-4 border-b border-slate-200 bg-slate-50">
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 className="font-semibold text-slate-900 text-base line-clamp-2 flex-1">
-                      {job.positionTitle}
-                    </h3>
-                    <Badge variant="default" className="ml-2 shrink-0">
-                      {job.vacantPositions || 0} slots
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-slate-600 font-medium line-clamp-1">
-                    {job.establishmentName}
-                  </p>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="space-y-3 w-full max-w-xl">
+                <div className="h-4 bg-slate-100 dark:bg-slate-800 rounded" />
+                <div className="h-4 bg-slate-100 dark:bg-slate-800 rounded w-1/2" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {[...Array(6)].map((_, idx) => (
+                    <div key={idx} className="h-28 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm" />
+                  ))}
                 </div>
+              </div>
+            </div>
+          ) : filteredJobs.length === 0 ? (
+            <div className="text-center py-12 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-900 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
+              <p className="text-slate-700 dark:text-slate-200 font-semibold mb-2">No approved jobs match your search.</p>
+              <p className="text-slate-500 dark:text-slate-400 text-sm">Adjust the search or refresh data.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredJobs.map((job) => {
+                const employerName = job.establishmentName || job.company || "—";
+                const location =
+                  job.location ||
+                  [job.barangay, (job as any).municipality, (job as any).province].filter(Boolean).join(", ") ||
+                  "Location not provided";
 
-                {/* Body */}
-                <div className="p-4">
-                  {/* Salary */}
-                  <div className="mb-3 pb-3 border-b border-slate-200">
-                    <p className="text-slate-600 font-medium mb-1 flex items-center gap-1">
-                      <DollarSign className="h-3 w-3" />
-                      Starting Salary
-                    </p>
-                    <p className="text-xs font-semibold text-slate-900">
-                      {job.startingSalaryOrWage 
-                        ? `₱${job.startingSalaryOrWage.toLocaleString()}`
-                        : "Not specified"
-                      }
-                    </p>
-                  </div>
-
-                  {/* Skills */}
-                  {job.mainSkillOrSpecialization && (
-                    <div className="mb-3 pb-3 border-b border-slate-200">
-                      <p className="text-xs text-slate-600 font-medium mb-1 flex items-center gap-1">
-                        <Briefcase className="h-3 w-3" />
-                        Main Skill
-                      </p>
-                      <p className="text-sm text-slate-900 line-clamp-2">
-                        {job.mainSkillOrSpecialization}
+                return (
+                  <div
+                    key={job.id}
+                    className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm hover:shadow-md transition flex flex-col gap-3 p-4"
+                  >
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300 font-semibold">Approved</p>
+                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white line-clamp-2">{job.positionTitle || job.title}</h3>
+                      <p className="text-sm text-slate-700 dark:text-slate-200 line-clamp-1">{employerName}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-300 flex items-center gap-1">
+                        <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                        <span className="line-clamp-1">{location}</span>
                       </p>
                     </div>
-                  )}
+                    <Button
+                      size="sm"
+                      className="w-full gap-2 text-xs bg-purple-600 hover:bg-purple-700"
+                      onClick={() => openMatchingModal(job)}
+                    >
+                      <Wand2 className="h-4 w-4" />
+                      Match Applicants
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-                  {/* Timestamp */}
-                  <p className="text-xs text-slate-500 mb-3 flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    {new Date(job.createdAt || "").toLocaleDateString()}
-                  </p>
-                </div>
-
-                {/* Footer - AI Match Button Only */}
-                <div className="px-4 py-3 bg-slate-50 border-t border-slate-200">
-                  <Button
-                    size="sm"
-                    className="w-full text-xs h-9 gap-2 bg-purple-600 hover:bg-purple-700"
-                    onClick={() => {
-                      setSelectedJobForMatching(job);
-                      setMatchingModalOpen(true);
-                    }}
-                  >
-                    <Wand2 className="h-4 w-4" />
-                    AI Match Applicants
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* AI Job Matching Modal */}
-        {matchingModalOpen && selectedJobForMatching?.id && (
-          <AIJobMatchingModal
-            jobId={selectedJobForMatching.id}
-            jobTitle={selectedJobForMatching.positionTitle}
-            onClose={() => setMatchingModalOpen(false)}
-          />
-        )}
+          {matchingModalOpen && selectedJobForMatching?.id && (
+            <AIJobMatchingModal
+              jobId={selectedJobForMatching.id}
+              jobTitle={selectedJobForMatching.positionTitle}
+              onClose={() => setMatchingModalOpen(false)}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

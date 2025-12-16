@@ -1,4 +1,5 @@
-import { Switch, Route } from "wouter";
+import { useEffect } from "react";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -8,8 +9,9 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { TopNavbar } from "@/components/top-navbar";
 import Landing from "@/pages/landing";
 import NotFound from "@/pages/not-found";
-import { AuthProvider, useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { AdminGuard, EmployerGuard, JobseekerGuard } from "@/lib/role-guard";
+import { useScaleToFitViewportWidth } from "@/lib/use-scale-to-fit";
 
 // Admin Pages
 import AdminLogin from "@/pages/admin/login";
@@ -22,13 +24,13 @@ import AdminArchivedJobVacancies from "@/pages/admin/protected/archived-job-vaca
 import AdminApplicants from "@/pages/admin/protected/applicants";
 import AdminReports from "@/pages/admin/protected/reports";
 import AdminEmployers from "@/pages/admin/protected/employers";
-import AdminArchivedEmployers from "@/pages/admin/protected/archived-employers";
 import AdminMatching from "@/pages/admin/protected/matching";
 import AdminSettings from "@/pages/admin/protected/settings";
 import AdminHelp from "@/pages/admin/protected/help";
 import AdminAuthSettingsPage from "@/pages/admin/auth-settings";
 import AdminAccessRequests from "@/pages/admin/protected/access-requests";
 import JobMatchingPage from "@/pages/admin/protected/job-matching";
+import AdminNotifications from "@/pages/admin/protected/notifications";
 import UseCaseDiagram from "@/pages/admin/use-case-diagram";
 import UseCaseDiagramJobseeker from "@/pages/admin/use-case-diagram-jobseeker";
 import UseCaseDiagramEmployer from "@/pages/admin/use-case-diagram-employer";
@@ -39,7 +41,10 @@ import EmployerSignup from "@/pages/employer/signup";
 import EmployerDashboard from "@/pages/employer/dashboard";
 import EmployerJobs from "@/pages/employer/jobs";
 import EmployerApplications from "@/pages/employer/applications";
+import EmployerNotifications from "@/pages/employer/notifications";
 import EmployerProfile from "@/pages/employer/profile";
+import EmployerSettings from "@/pages/employer/settings";
+import EmployerMessages from "@/pages/employer/messages";
 
 // Jobseeker Pages
 import JobseekerLogin from "@/pages/jobseeker/login";
@@ -47,7 +52,10 @@ import JobseekerSignup from "@/pages/jobseeker/signup";
 import JobseekerDashboard from "@/pages/jobseeker/dashboard";
 import JobseekerJobs from "@/pages/jobseeker/jobs";
 import JobseekerApplications from "@/pages/jobseeker/applications";
+import JobseekerNotifications from "@/pages/jobseeker/notifications";
 import JobseekerProfile from "@/pages/jobseeker/profile";
+import JobseekerSettings from "@/pages/jobseeker/settings";
+import JobseekerMessages from "@/pages/jobseeker/messages";
 import JobseekerUseCases from "@/pages/jobseeker/use-case-descriptions";
 import EmployerUseCases from "@/pages/employer/use-case-descriptions";
 // Public info pages
@@ -60,6 +68,8 @@ import ContactInformation from "@/pages/contact";
 import OAuthCallbackPage from "@/pages/oauth-callback";
 
 export default function App() {
+  useScaleToFitViewportWidth({ minScale: 0.1 });
+
   const style = {
     "--sidebar-width": "20rem",
     "--sidebar-width-icon": "4rem",
@@ -68,13 +78,11 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <AuthProvider>
         <SidebarProvider style={style as React.CSSProperties}>
-          <div className="flex h-screen w-full">
+          <div className="flex h-[100svh] w-full overflow-hidden bg-background">
             <InnerApp />
           </div>
         </SidebarProvider>
-        </AuthProvider>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
@@ -83,6 +91,7 @@ export default function App() {
 
 function InnerApp() {
   const { user, isLoading } = useAuth();
+  const [location] = useLocation();
 
   if (isLoading) {
     return <div className="flex items-center justify-center w-full h-full">Loading...</div>;
@@ -91,7 +100,7 @@ function InnerApp() {
   // ========== PUBLIC ROUTES (No authentication required) ==========
   if (!user) {
     return (
-      <div className="flex-1">
+      <main className="flex-1 min-h-0 overflow-auto">
         <Switch>
           {/* Landing Page */}
           <Route path="/" component={Landing} />
@@ -103,8 +112,10 @@ function InnerApp() {
           <Route path="/help" component={HelpSupport} />
           <Route path="/privacy" component={PrivacyPolicy} />
           <Route path="/contact" component={ContactInformation} />
-          {/* OAuth callback */}
+
+          {/* OAuth callback (support old and new paths) */}
           <Route path="/oauth/callback" component={OAuthCallbackPage} />
+          <Route path="/oauth-callback" component={OAuthCallbackPage} />
 
           {/* Admin Login */}
           <Route path="/admin/login" component={AdminLogin} />
@@ -123,18 +134,19 @@ function InnerApp() {
           {/* Fallback to landing */}
           <Route component={Landing} />
         </Switch>
-      </div>
+      </main>
     );
   }
 
   // ========== ADMIN ROUTES (role='admin') ==========
   if (user.role === "admin") {
+    const isMessagesPage = location.startsWith("/admin/messages");
     return (
       <>
         <AppSidebar />
-        <div className="flex flex-col flex-1 min-w-0">
-          <TopNavbar />
-          <main className="flex-1 overflow-auto">
+        <div className="flex flex-col flex-1 min-w-0 min-h-0">
+          <main className={`flex-1 min-h-0 ${isMessagesPage ? "overflow-hidden" : "overflow-auto"}`}>
+            <TopNavbar />
             <Switch>
               <Route path="/admin/dashboard" component={AdminDashboard} />
               <Route path="/admin/access-requests" component={AdminAccessRequests} />
@@ -143,9 +155,9 @@ function InnerApp() {
               <Route path="/admin/jobs/vacancies/archived" component={AdminArchivedJobVacancies} />
               <Route path="/admin/jobs/:id/match" component={JobMatchingPage} />
               <Route path="/admin/jobs" component={AdminJobs} />
+              <Route path="/admin/notifications" component={AdminNotifications} />
               <Route path="/admin/applicants" component={AdminApplicants} />
               <Route path="/admin/reports" component={AdminReports} />
-              <Route path="/admin/employers/archived" component={AdminArchivedEmployers} />
               <Route path="/admin/employers" component={AdminEmployers} />
               <Route path="/admin/matching" component={AdminMatching} />
               <Route path="/admin/settings" component={AdminSettings} />
@@ -168,17 +180,21 @@ function InnerApp() {
 
   // ========== EMPLOYER ROUTES (role='employer') ==========
   if (user.role === "employer") {
+    const isMessagesPage = location.startsWith("/employer/messages");
     return (
       <>
         <AppSidebar />
-        <div className="flex flex-col flex-1 min-w-0">
-          <TopNavbar />
-          <main className="flex-1 overflow-auto">
+        <div className="flex flex-col flex-1 min-w-0 min-h-0">
+          <main className={`flex-1 min-h-0 ${isMessagesPage ? "overflow-hidden" : "overflow-auto"}`}>
+            <TopNavbar />
             <Switch>
               <Route path="/employer/dashboard" component={EmployerDashboard} />
               <Route path="/employer/jobs" component={EmployerJobs} />
               <Route path="/employer/applications" component={EmployerApplications} />
+              <Route path="/employer/notifications" component={EmployerNotifications} />
+              <Route path="/employer/messages" component={EmployerMessages} />
               <Route path="/employer/profile" component={EmployerProfile} />
+              <Route path="/employer/settings" component={EmployerSettings} />
               {/* Redirect root to employer dashboard */}
               <Route path="/" component={EmployerDashboard} />
               <Route component={NotFound} />
@@ -190,17 +206,37 @@ function InnerApp() {
   }
 
   // ========== JOBSEEKER ROUTES (role='jobseeker' or 'freelancer') ==========
+  return <JobseekerShell />;
+}
+
+function JobseekerShell() {
+  const [location, setLocation] = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const targetId = params.get("job");
+
+    if (targetId && !location.startsWith("/jobseeker/jobs")) {
+      setLocation(`/jobseeker/jobs?job=${targetId}`);
+    }
+  }, [location, setLocation]);
+
+  const isMessagesPage = location.startsWith("/jobseeker/messages");
+
   return (
     <>
       <AppSidebar />
-      <div className="flex flex-col flex-1 min-w-0">
-        <TopNavbar />
-        <main className="flex-1 overflow-auto">
+      <div className="flex flex-col flex-1 min-w-0 min-h-0">
+        <main className={`flex-1 min-h-0 ${isMessagesPage ? "overflow-hidden" : "overflow-auto"}`}>
+          <TopNavbar />
           <Switch>
             <Route path="/jobseeker/dashboard" component={JobseekerDashboard} />
             <Route path="/jobseeker/jobs" component={JobseekerJobs} />
             <Route path="/jobseeker/applications" component={JobseekerApplications} />
+            <Route path="/jobseeker/notifications" component={JobseekerNotifications} />
+            <Route path="/jobseeker/messages" component={JobseekerMessages} />
             <Route path="/jobseeker/profile" component={JobseekerProfile} />
+            <Route path="/jobseeker/settings" component={JobseekerSettings} />
             {/* Redirect root to jobseeker dashboard */}
             <Route path="/" component={JobseekerDashboard} />
             <Route component={NotFound} />

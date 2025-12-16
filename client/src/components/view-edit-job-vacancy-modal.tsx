@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import type { JobVacancy } from '@shared/schema';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -12,7 +11,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
+import { authFetch } from '@/lib/auth';
 import { X } from 'lucide-react';
+import { SkillSpecializationInput } from "@/components/skill-specialization-input";
 
 // Legacy interface retained for reference, replaced by shared JobVacancy
 interface LegacyJobVacancy {
@@ -46,7 +47,42 @@ interface ViewEditJobVacancyModalProps {
   vacancyId?: string;
   onSave?: () => void;
   viewOnly?: boolean;
+  startInEdit?: boolean;
 }
+
+type AdminJobDetails = {
+  id?: string;
+  employerId?: string;
+  employer_id?: string;
+  establishmentName?: string;
+  companyName?: string;
+  positionTitle?: string;
+  position_title?: string;
+  description?: string;
+  location?: string;
+  barangay?: string;
+  municipality?: string;
+  province?: string;
+  salaryMin?: number | null;
+  salaryMax?: number | null;
+  salaryPeriod?: string;
+  jobStatus?: string;
+  minimumEducationRequired?: string;
+  mainSkillOrSpecialization?: string;
+  yearsOfExperienceRequired?: number | null;
+  agePreference?: string;
+  vacantPositions?: number | null;
+  paidEmployees?: number | null;
+  industryCodes?: unknown;
+  preparedByName?: string;
+  preparedByDesignation?: string;
+  preparedByContact?: string;
+  dateAccomplished?: string;
+  status?: string;
+  archived?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
 
 export function ViewEditJobVacancyModal({
   open,
@@ -54,40 +90,33 @@ export function ViewEditJobVacancyModal({
   vacancyId,
   onSave,
   viewOnly = false,
+  startInEdit = false,
 }: ViewEditJobVacancyModalProps) {
   const { toast } = useToast();
-  const [vacancy, setVacancy] = useState<import('@shared/schema').JobVacancy | null>(null);
+  const [vacancy, setVacancy] = useState<AdminJobDetails | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  type FormData = Partial<JobVacancy> & { industryCodes?: string[] };
-  const [formData, setFormData] = useState<FormData>({});
+  const [formData, setFormData] = useState<Partial<AdminJobDetails>>({});
 
   useEffect(() => {
     if (open && vacancyId) {
       fetchVacancy();
     }
-  }, [open, vacancyId]);
+    if (open) {
+      setIsEditing(!viewOnly && startInEdit);
+    }
+  }, [open, vacancyId, startInEdit]);
 
   const fetchVacancy = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/job-vacancies/${vacancyId}`);
-      if (!res.ok) throw new Error('Failed to fetch vacancy');
-      const data = await res.json();
-      
-      // Parse industryCodes if it's a JSON string
-      let industryCodes: string[] = [];
-      if (typeof data.industryCodes === 'string') {
-        try { industryCodes = JSON.parse(data.industryCodes); }
-        catch { industryCodes = []; }
-      } else if (Array.isArray(data.industryCodes)) {
-        industryCodes = data.industryCodes;
-      }
-      
-      const parsedData = { ...data, industryCodes };
-      setVacancy(parsedData);
-      setFormData(parsedData);
+      const res = await authFetch(`/api/admin/jobs/${vacancyId}`);
+      if (!res.ok) throw new Error('Failed to fetch job details');
+      const job = (await res.json()) as AdminJobDetails;
+
+      setVacancy(job);
+      setFormData(job);
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -99,24 +128,37 @@ export function ViewEditJobVacancyModal({
     }
   };
 
+  const industryCodes = useMemo(() => {
+    const raw = vacancy?.industryCodes;
+    if (Array.isArray(raw)) return raw.map((v) => String(v)).filter(Boolean);
+    if (typeof raw === 'string' && raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.map((v) => String(v)).filter(Boolean);
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  }, [vacancy?.industryCodes]);
+
+  const salaryDisplay = useMemo(() => {
+    const min = vacancy?.salaryMin ?? null;
+    const max = vacancy?.salaryMax ?? null;
+    const period = vacancy?.salaryPeriod || '';
+    if (typeof min === 'number' && typeof max === 'number' && max > min) {
+      return `₱${min.toLocaleString()} - ₱${max.toLocaleString()}${period ? ` / ${period}` : ''}`;
+    }
+    const amount = typeof min === 'number' ? min : typeof max === 'number' ? max : null;
+    return amount !== null ? `₱${amount.toLocaleString()}${period ? ` / ${period}` : ''}` : 'Negotiable';
+  }, [vacancy?.salaryMin, vacancy?.salaryMax, vacancy?.salaryPeriod]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: name === 'numberOfVacancies' || name === 'yearsOfExperienceRequired' || name === 'startingSalaryOrWage'
-        ? Number(value)
-        : value,
+      [name]: value,
     }));
-  };
-
-  // Toggle industry code checkbox
-  const toggleIndustryCode = (code: string) => {
-    setFormData((prev) => {
-      const current = Array.isArray(prev.industryCodes) ? prev.industryCodes : [];
-      const has = current.includes(code);
-      const next = has ? current.filter((c) => c !== code) : [...current, code];
-      return { ...prev, industryCodes: next } as any;
-    });
   };
 
   const handleSave = async () => {
@@ -124,86 +166,69 @@ export function ViewEditJobVacancyModal({
 
     setSaving(true);
     try {
-      // Ensure all required fields are present
-      const payload = {
-        employerId: formData.employerId || vacancy?.employerId || '',
-        establishmentName: formData.establishmentName ?? vacancy?.establishmentName ?? '',
-        positionTitle: formData.positionTitle ?? vacancy?.positionTitle ?? '',
-        minimumEducationRequired: formData.minimumEducationRequired ?? vacancy?.minimumEducationRequired ?? '',
-        mainSkillOrSpecialization: formData.mainSkillOrSpecialization ?? vacancy?.mainSkillOrSpecialization ?? undefined,
-        yearsOfExperienceRequired: Number(formData.yearsOfExperienceRequired ?? vacancy?.yearsOfExperienceRequired ?? 0),
-        agePreference: formData.agePreference ?? vacancy?.agePreference ?? undefined,
-        startingSalaryOrWage: Number(formData.startingSalaryOrWage ?? vacancy?.startingSalaryOrWage ?? 0),
-        vacantPositions: Number(formData.vacantPositions ?? vacancy?.vacantPositions ?? 0),
-        paidEmployees: Number(formData.paidEmployees ?? vacancy?.paidEmployees ?? 0),
-        jobStatus: formData.jobStatus ?? vacancy?.jobStatus ?? 'P',
-        preparedByName: formData.preparedByName ?? vacancy?.preparedByName ?? '',
-        preparedByDesignation: formData.preparedByDesignation ?? vacancy?.preparedByDesignation ?? '',
-        preparedByContact: formData.preparedByContact ?? vacancy?.preparedByContact ?? undefined,
-        dateAccomplished: formData.dateAccomplished ?? vacancy?.dateAccomplished ?? new Date().toISOString().slice(0,10),
-        industryCodes: formData.industryCodes ?? vacancy?.industryCodes ?? [],
+      const payload: Record<string, unknown> = {};
+
+      const add = (key: string, value: unknown) => {
+        if (value !== undefined) payload[key] = value;
       };
 
-      console.log('Saving vacancy with payload:', payload);
+      add('establishmentName', formData.establishmentName);
+      add('positionTitle', formData.positionTitle);
+      add('description', formData.description);
+      add('location', formData.location);
+      add('barangay', formData.barangay);
+      add('municipality', formData.municipality);
+      add('province', formData.province);
+      add('jobStatus', formData.jobStatus);
+      add('agePreference', formData.agePreference);
+      add('preparedByName', formData.preparedByName);
+      add('preparedByDesignation', formData.preparedByDesignation);
+      add('preparedByContact', formData.preparedByContact);
+      add('dateAccomplished', formData.dateAccomplished);
 
-      const res = await fetch(`/api/job-vacancies/${vacancyId}`, {
+      // Map legacy/display fields in this modal back to the update schema (jobCreateSchema.partial)
+      add('minimumEducation', (formData as any).minimumEducationRequired);
+      const years = (formData as any).yearsOfExperienceRequired;
+      if (years !== undefined && years !== '') {
+        const parsed = Number(years);
+        if (!Number.isNaN(parsed)) add('yearsOfExperience', parsed);
+      }
+
+      const vacantPositions = formData.vacantPositions;
+      if (vacantPositions !== undefined && vacantPositions !== null) {
+        const parsed = Number(vacantPositions);
+        if (!Number.isNaN(parsed)) add('vacantPositions', parsed);
+      }
+
+      const paidEmployees = formData.paidEmployees;
+      if (paidEmployees !== undefined && paidEmployees !== null) {
+        const parsed = Number(paidEmployees);
+        if (!Number.isNaN(parsed)) add('paidEmployees', parsed);
+      }
+
+      // Skill input maps to `skills` for updates
+      if (formData.mainSkillOrSpecialization !== undefined) {
+        add('skills', formData.mainSkillOrSpecialization);
+      }
+
+      const res = await authFetch(`/api/admin/jobs/${vacancyId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({ error: 'Failed to update vacancy' }));
-        console.error('Update failed:', errorData);
-        
-        // Extract error message properly
-        const errorMessage = typeof errorData === 'string' 
-          ? errorData 
-          : errorData.error || errorData.message || JSON.stringify(errorData);
-        
-        throw new Error(errorMessage);
+        const errorData = await res.json().catch(() => ({ error: 'Failed to update job' }));
+        const msg = (errorData && (errorData.message || errorData.error)) || 'Failed to update job';
+        throw new Error(msg);
       }
 
-      const result = await res.json();
-      console.log('Update successful:', result);
-
-      toast({
-        title: 'Success',
-        description: 'Job vacancy updated successfully',
-      });
-
+      toast({ title: 'Success', description: 'Job updated successfully' });
       setIsEditing(false);
-      onOpenChange(false);
       onSave?.();
+      await fetchVacancy();
     } catch (error: any) {
-      console.error('Save error:', error);
-      let errorMessage = 'Unknown error';
-      // Try to extract the most useful error message
-      if (error && typeof error === 'object') {
-        // If error is an Error instance with a message
-        if (error.message && typeof error.message === 'string') {
-          errorMessage = error.message;
-        } else if (error.error && typeof error.error === 'string') {
-          errorMessage = error.error;
-        } else if (error.message && typeof error.message === 'object' && error.message.message) {
-          errorMessage = error.message.message;
-        } else if (error.details && Array.isArray(error.details) && error.details[0]?.message) {
-          // Zod validation error details
-          errorMessage = error.details[0].message;
-        } else if (error.message) {
-          errorMessage = JSON.stringify(error.message);
-        } else {
-          errorMessage = JSON.stringify(error);
-        }
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      }
-      console.error('Full error object:', error);
-      toast({
-        title: 'Error',
-        description: errorMessage,
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: error?.message || 'Failed to update job', variant: 'destructive' });
     } finally {
       setSaving(false);
     }
@@ -211,302 +236,307 @@ export function ViewEditJobVacancyModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {isEditing ? 'Edit Job Vacancy' : 'View Job Vacancy'}
-          </DialogTitle>
-          <DialogDescription>
-            {isEditing ? 'Update the job vacancy details below' : 'Job vacancy details'}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden rounded-3xl border border-slate-200/80 bg-gradient-to-br from-slate-50 via-white to-slate-100 p-0 shadow-2xl">
+        <div className="flex items-start justify-between gap-4 px-6 py-5 border-b border-slate-200 bg-white/70 backdrop-blur">
+          <div className="space-y-1">
+            <DialogTitle className="text-2xl font-semibold text-slate-900">
+              {isEditing ? 'Edit Job Vacancy' : 'Job Vacancy Details'}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-slate-600">
+              {isEditing ? 'Update the fields below and save changes.' : 'Review the vacancy information.'}
+            </DialogDescription>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 font-semibold uppercase tracking-wide">
+              {vacancy?.jobStatus === 'P' ? 'Permanent' : vacancy?.jobStatus === 'T' ? 'Temporary' : vacancy?.jobStatus === 'C' ? 'Contractual' : 'Unspecified'}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 font-semibold text-blue-700">
+              Posted {vacancy?.createdAt ? new Date(vacancy.createdAt).toLocaleDateString() : 'Recently'}
+            </span>
+          </div>
+        </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <p className="text-slate-600">Loading vacancy details...</p>
+          <div className="flex items-center justify-center py-16">
+            <div className="w-full max-w-md space-y-3">
+              <div className="h-4 rounded-full bg-slate-200" />
+              <div className="h-4 rounded-full bg-slate-200 w-2/3" />
+              <div className="grid grid-cols-3 gap-3">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="h-20 rounded-2xl bg-slate-100 border border-slate-200" />
+                ))}
+              </div>
+            </div>
           </div>
         ) : vacancy ? (
-          <div className="space-y-6">
-            {/* Two Column Layout */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* Establishment Name */}
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-2">
-                  Establishment Name
-                </label>
-                {isEditing ? (
-                  <Input
-                    name="establishmentName"
-                    value={formData.establishmentName || ''}
-                    onChange={handleInputChange}
-                  />
-                ) : (
-                  <p className="text-slate-900">{vacancy.establishmentName}</p>
-                )}
-              </div>
-
-              {/* Position Title */}
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-2">
-                  Position Title
-                </label>
-                {isEditing ? (
-                  <Input
-                    name="positionTitle"
-                    value={formData.positionTitle || ''}
-                    onChange={handleInputChange}
-                  />
-                ) : (
-                  <p className="text-slate-900">{vacancy.positionTitle}</p>
-                )}
-              </div>
-
-
-              {/* Salary */}
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-2">
-                  Starting Salary/Wage
-                </label>
-                {isEditing ? (
-                  <Input
-                    type="number"
-                    name="startingSalaryOrWage"
-                    value={formData.startingSalaryOrWage || ''}
-                    onChange={handleInputChange}
-                  />
-                ) : (
-                  <p className="text-slate-900">
-                    ₱{(vacancy.startingSalaryOrWage || 0).toLocaleString()}
-                  </p>
-                )}
-              </div>
-
-
-              {/* Vacant Positions */}
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-2">
-                  No. of Vacant Position
-                </label>
-                {isEditing ? (
-                  <Input
-                    type="number"
-                    name="vacantPositions"
-                    value={formData.vacantPositions || ''}
-                    onChange={handleInputChange}
-                  />
-                ) : (
-                  <p className="text-slate-900">{vacancy.vacantPositions || 0}</p>
-                )}
-              </div>
-
-              {/* Paid Employees */}
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-2">
-                  No. of Paid Employees
-                </label>
-                {isEditing ? (
-                  <Input
-                    type="number"
-                    name="paidEmployees"
-                    value={formData.paidEmployees || ''}
-                    onChange={handleInputChange}
-                  />
-                ) : (
-                  <p className="text-slate-900">{vacancy.paidEmployees || 0}</p>
-                )}
-              </div>
-
-              {/* Education Required */}
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-2">
-                  Minimum Education Required
-                </label>
-                {isEditing ? (
-                  <Input
-                    name="minimumEducationRequired"
-                    value={formData.minimumEducationRequired || ''}
-                    onChange={handleInputChange}
-                  />
-                ) : (
-                  <p className="text-slate-900">{vacancy.minimumEducationRequired || 'N/A'}</p>
-                )}
-              </div>
-
-              {/* Experience Required */}
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-2">
-                  Years of Experience Required
-                </label>
-                {isEditing ? (
-                  <Input
-                    type="number"
-                    name="yearsOfExperienceRequired"
-                    value={formData.yearsOfExperienceRequired || ''}
-                    onChange={handleInputChange}
-                  />
-                ) : (
-                  <p className="text-slate-900">{vacancy.yearsOfExperienceRequired || 0}+ years</p>
-                )}
-              </div>
-
-              {/* Industry (SRS Codes 01–17) - FULL WIDTH below grid */}
+          <div className="space-y-6 px-6 pb-6 pt-2 overflow-y-auto max-h-[75vh]">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              {[{
+                label: 'Starting Salary',
+                value: salaryDisplay,
+                helper: vacancy.salaryPeriod ? `${vacancy.salaryPeriod}` : 'Per submission',
+              }, {
+                label: 'Openings',
+                value: `${vacancy.vacantPositions ?? 0}`,
+                helper: vacancy.vacantPositions === 1 ? 'slot' : 'slots',
+              }, {
+                label: 'Experience',
+                value: `${vacancy.yearsOfExperienceRequired ?? 0}+ yrs`,
+                helper: vacancy.minimumEducationRequired || 'Education not set',
+              }].map((stat) => (
+                <div key={stat.label} className="rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-sm">
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500">{stat.label}</p>
+                  <p className="text-xl font-semibold text-slate-900">{stat.value}</p>
+                  <p className="text-xs text-slate-500">{stat.helper}</p>
+                </div>
+              ))}
             </div>
 
-            {/* Industry Section (Vertical List) */}
-            <div className="border-t pt-4">
-              <label className="text-sm font-medium text-slate-700 block mb-3">Industry Engaged In</label>
-              {isEditing ? (
-                <div className="space-y-2">
+            <div className="space-y-6">
+              <div className="space-y-4 rounded-3xl border border-slate-200 bg-white/70 p-5 shadow-sm">
+                <div className="flex items-center justify-between pb-1">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Core Details</p>
+                    <p className="text-sm text-slate-500">Position, salary, headcount, and quals</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   {[
-                    ['01','Agriculture'],['02','Fishing'],['03','Mining and Quarrying'],['04','Manufacturing'],
-                    ['05','Electrical, Gas and Water Supply'],['06','Construction'],['07','Wholesale and Retail Trade'],['08','Hotels and Restaurant'],
-                    ['09','Transport, Storage and Communication'],['10','Financial Intermediation'],['11','Real Estate, Renting and Business Activities'],['12','Public Administration and Defense'],
-                    ['13','Education'],['14','Health and Social Work'],['15','Other Community, Social and Personal Service Activities'],['16','Private Households as Employers'],['17','Extra-Territorial Organizations and Bodies']
-                  ].map(([code,label]) => (
-                    <label key={code} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={((formData.industryCodes as string[] | undefined) || (vacancy.industryCodes as string[] | undefined) || []).includes(code as string)}
-                        onChange={() => toggleIndustryCode(code as string)}
-                      />
-                      <span>{code} - {label}</span>
-                    </label>
+                    {
+                      label: 'Establishment Name',
+                      name: 'establishmentName',
+                      value: vacancy.establishmentName,
+                      type: 'text',
+                    },
+                    {
+                      label: 'Position Title',
+                      name: 'positionTitle',
+                      value: vacancy.positionTitle,
+                      type: 'text',
+                    },
+                    {
+                      label: 'Salary',
+                      name: 'salaryDisplay',
+                      value: salaryDisplay,
+                      type: 'text',
+                    },
+                    {
+                      label: 'Location',
+                      name: 'location',
+                      value: vacancy.location || [vacancy.barangay, vacancy.municipality, vacancy.province].filter(Boolean).join(', ') || '—',
+                      type: 'text',
+                    },
+                    {
+                      label: 'Barangay',
+                      name: 'barangay',
+                      value: vacancy.barangay || '—',
+                      type: 'text',
+                    },
+                    {
+                      label: 'Municipality/City',
+                      name: 'municipality',
+                      value: vacancy.municipality || '—',
+                      type: 'text',
+                    },
+                    {
+                      label: 'Province',
+                      name: 'province',
+                      value: vacancy.province || '—',
+                      type: 'text',
+                    },
+                    {
+                      label: 'No. of Vacant Positions',
+                      name: 'vacantPositions',
+                      value: vacancy.vacantPositions ?? 0,
+                      type: 'number',
+                      rawValue: formData.vacantPositions,
+                    },
+                    {
+                      label: 'No. of Paid Employees',
+                      name: 'paidEmployees',
+                      value: vacancy.paidEmployees ?? 0,
+                      type: 'number',
+                      rawValue: formData.paidEmployees,
+                    },
+                    {
+                      label: 'Minimum Education Required',
+                      name: 'minimumEducationRequired',
+                      value: vacancy.minimumEducationRequired || 'N/A',
+                      type: 'text',
+                    },
+                    {
+                      label: 'Years of Experience Required',
+                      name: 'yearsOfExperienceRequired',
+                      value: `${vacancy.yearsOfExperienceRequired || 0} years`,
+                      type: 'number',
+                      rawValue: formData.yearsOfExperienceRequired,
+                    },
+                    {
+                      label: 'Age Preference',
+                      name: 'agePreference',
+                      value: vacancy.agePreference || 'N/A',
+                      type: 'text',
+                    },
+                  ].map((field) => (
+                    <div key={field.name} className="space-y-2">
+                      <label className="text-sm font-medium text-slate-700 block">{field.label}</label>
+                      {isEditing ? (
+                        <Input type={field.type} name={field.name} value={(formData as any)[field.name] ?? ''} onChange={handleInputChange} />
+                      ) : (
+                        <p className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-slate-900">{field.value}</p>
+                      )}
+                    </div>
                   ))}
                 </div>
-              ) : (
-                <div className="space-y-1">
-                  {(() => {
-                    let codes: string[] = [];
-                    if (typeof vacancy.industryCodes === 'string') {
-                      try { codes = JSON.parse(vacancy.industryCodes); } catch {}
-                    } else if (Array.isArray(vacancy.industryCodes)) {
-                      codes = vacancy.industryCodes;
-                    }
-                    return codes.length > 0 ? (
-                      codes.map((code) => {
-                        const industryNameMap: Record<string, string> = {
-                          '01': 'Agriculture','02': 'Fishing','03': 'Mining and Quarrying','04': 'Manufacturing',
-                          '05': 'Electrical, Gas and Water Supply','06': 'Construction','07': 'Wholesale and Retail Trade','08': 'Hotels and Restaurant',
-                          '09': 'Transport, Storage and Communication','10': 'Financial Intermediation','11': 'Real Estate, Renting and Business Activities','12': 'Public Administration and Defense',
-                          '13': 'Education','14': 'Health and Social Work','15': 'Other Community, Social and Personal Service Activities','16': 'Private Households as Employers','17': 'Extra-Territorial Organizations and Bodies'
-                        };
-                        return (
-                          <p key={code} className="text-sm text-slate-900">{code} - {industryNameMap[code] || 'Unknown'}</p>
-                        );
-                      })
+
+                {vacancy.description && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 block">Description</label>
+                    <p className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-slate-900 whitespace-pre-wrap">{vacancy.description}</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-4 rounded-3xl border border-slate-200 bg-white/70 p-5 shadow-sm">
+                <div className="flex items-center justify-between pb-1">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Industry</p>
+                    <p className="text-sm text-slate-500">SRS Form 2A industry codes</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {industryCodes.length > 0 ? (
+                    industryCodes.map((code) => (
+                      <span key={code} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-800 border border-slate-200">
+                        {code}
+                      </span>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-500">N/A</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-4 rounded-3xl border border-slate-200 bg-white/70 p-5 shadow-sm">
+                <div className="flex items-center justify-between pb-1">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Job Requirements</p>
+                    <p className="text-sm text-slate-500">Status, age preference, and skills</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  {/* Job Status (P/T/C) */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 block">Job Status</label>
+                    {isEditing ? (
+                      <select
+                        name="jobStatus"
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2"
+                        value={formData.jobStatus || vacancy.jobStatus || 'P'}
+                        onChange={(e) => handleInputChange(e as any)}
+                      >
+                        <option value="P">Permanent (P)</option>
+                        <option value="T">Temporary (T)</option>
+                        <option value="C">Contractual (C)</option>
+                      </select>
                     ) : (
-                      <p className="text-sm text-slate-500">N/A</p>
-                    );
-                  })()}
+                      <p className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-slate-900">
+                        {vacancy.jobStatus === 'P' ? 'Permanent (P)' : vacancy.jobStatus === 'T' ? 'Temporary (T)' : vacancy.jobStatus === 'C' ? 'Contractual (C)' : 'N/A'}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Age Preference */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 block">
+                      Age Preference
+                    </label>
+                    {isEditing ? (
+                      <Input
+                        name="agePreference"
+                        value={formData.agePreference || ''}
+                        onChange={handleInputChange}
+                      />
+                    ) : (
+                      <p className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-slate-900">{vacancy.agePreference || 'N/A'}</p>
+                    )}
+                  </div>
+
+                  {/* Main Skill */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 block">
+                      Main Skill or Specialization
+                    </label>
+                    {isEditing ? (
+                      <SkillSpecializationInput
+                        value={String((formData.mainSkillOrSpecialization as any) || '')}
+                        onChange={(next) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            mainSkillOrSpecialization: next,
+                          }))
+                        }
+                        placeholder="Type a skill and press Enter"
+                      />
+                    ) : (
+                      <p className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-slate-900">{vacancy.mainSkillOrSpecialization || 'N/A'}</p>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-
-            {/* Reopen grid for remaining fields */}
-            <div className="grid grid-cols-2 gap-4">
-
-              {/* Job Status (P/T/C) */}
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-2">Job Status</label>
-                {isEditing ? (
-                  <select
-                    name="jobStatus"
-                    className="border rounded px-3 py-2"
-                    value={formData.jobStatus || vacancy.jobStatus || 'P'}
-                    onChange={(e) => handleInputChange(e as any)}
-                  >
-                    <option value="P">Permanent (P)</option>
-                    <option value="T">Temporary (T)</option>
-                    <option value="C">Contractual (C)</option>
-                  </select>
-                ) : (
-                  <p className="text-slate-900">
-                    {vacancy.jobStatus === 'P' ? 'Permanent (P)' : vacancy.jobStatus === 'T' ? 'Temporary (T)' : vacancy.jobStatus === 'C' ? 'Contractual (C)' : 'N/A'}
-                  </p>
-                )}
               </div>
 
-              {/* Age Preference */}
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-2">
-                  Age Preference
-                </label>
-                {isEditing ? (
-                  <Input
-                    name="agePreference"
-                    value={formData.agePreference || ''}
-                    onChange={handleInputChange}
-                  />
-                ) : (
-                  <p className="text-slate-900">{vacancy.agePreference || 'N/A'}</p>
-                )}
-              </div>
-
-              {/* Main Skill */}
-              <div>
-                <label className="text-sm font-medium text-slate-700 block mb-2">
-                  Main Skill or Specialization
-                </label>
-                {isEditing ? (
-                  <Input
-                    name="mainSkillOrSpecialization"
-                    value={formData.mainSkillOrSpecialization || ''}
-                    onChange={handleInputChange}
-                  />
-                ) : (
-                  <p className="text-slate-900">{vacancy.mainSkillOrSpecialization || 'N/A'}</p>
-                )}
-              </div>
-            </div>
-
-            {/* Full Width Fields (none for strict SRS Form 2A beyond prepared by section) */}
-            <div className="space-y-4">
-
-              {/* Prepared By Info */}
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-slate-700 block mb-2">
-                    Prepared By Name
-                  </label>
-                  {isEditing ? (
-                    <Input
-                      name="preparedByName"
-                      value={formData.preparedByName || ''}
-                      onChange={handleInputChange}
-                    />
-                  ) : (
-                    <p className="text-slate-900">{vacancy.preparedByName || 'N/A'}</p>
-                  )}
+              <div className="space-y-4 rounded-3xl border border-slate-200 bg-white/70 p-5 shadow-sm">
+                <div className="flex items-center justify-between pb-1">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Prepared By</p>
+                    <p className="text-sm text-slate-500">Contact person for this submission</p>
+                  </div>
                 </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 block">
+                      Prepared By Name
+                    </label>
+                    {isEditing ? (
+                      <Input
+                        name="preparedByName"
+                        value={formData.preparedByName || ''}
+                        onChange={handleInputChange}
+                      />
+                    ) : (
+                      <p className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-slate-900">{vacancy.preparedByName || 'N/A'}</p>
+                    )}
+                  </div>
 
-                <div>
-                  <label className="text-sm font-medium text-slate-700 block mb-2">
-                    Designation
-                  </label>
-                  {isEditing ? (
-                    <Input
-                      name="preparedByDesignation"
-                      value={formData.preparedByDesignation || ''}
-                      onChange={handleInputChange}
-                    />
-                  ) : (
-                    <p className="text-slate-900">{vacancy.preparedByDesignation || 'N/A'}</p>
-                  )}
-                </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 block">
+                      Designation
+                    </label>
+                    {isEditing ? (
+                      <Input
+                        name="preparedByDesignation"
+                        value={formData.preparedByDesignation || ''}
+                        onChange={handleInputChange}
+                      />
+                    ) : (
+                      <p className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-slate-900">{vacancy.preparedByDesignation || 'N/A'}</p>
+                    )}
+                  </div>
 
-                <div>
-                  <label className="text-sm font-medium text-slate-700 block mb-2">
-                    Contact
-                  </label>
-                  {isEditing ? (
-                    <Input
-                      name="preparedByContact"
-                      value={formData.preparedByContact || ''}
-                      onChange={handleInputChange}
-                    />
-                  ) : (
-                    <p className="text-slate-900">{vacancy.preparedByContact || 'N/A'}</p>
-                  )}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 block">
+                      Contact
+                    </label>
+                    {isEditing ? (
+                      <Input
+                        name="preparedByContact"
+                        value={formData.preparedByContact || ''}
+                        onChange={handleInputChange}
+                      />
+                    ) : (
+                      <p className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-slate-900">{vacancy.preparedByContact || 'N/A'}</p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -527,9 +557,7 @@ export function ViewEditJobVacancyModal({
           {!viewOnly && (
             <>
               {!isEditing ? (
-                <Button onClick={() => setIsEditing(true)}>
-                  Edit
-                </Button>
+                <Button onClick={() => setIsEditing(true)}>Edit</Button>
               ) : (
                 <>
                   <Button
@@ -538,13 +566,11 @@ export function ViewEditJobVacancyModal({
                       setIsEditing(false);
                       setFormData(vacancy || {});
                     }}
+                    disabled={saving}
                   >
                     Cancel
                   </Button>
-                  <Button
-                    onClick={handleSave}
-                    disabled={saving}
-                  >
+                  <Button onClick={handleSave} disabled={saving}>
                     {saving ? 'Saving...' : 'Save'}
                   </Button>
                 </>

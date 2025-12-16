@@ -122,7 +122,8 @@ export default function AdminAuthSettingsPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-semibold">Authentication Settings</h1>
+      {/* Navbar handles page title; keep styling here. */}
+      <p className="text-2xl font-semibold">Authentication Settings</p>
       <p className="text-sm text-muted-foreground">Configure available sign-in options. Login pages will adapt to enabled providers.</p>
 
       {error && <div className="text-red-600">{error}</div>}

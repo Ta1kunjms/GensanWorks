@@ -63,7 +63,7 @@ export default function UseCaseDiagram() {
         <div className="bg-white rounded-lg shadow-sm p-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Admin Use Case Diagram</h1>
+              <p className="text-3xl font-bold text-gray-900">Admin Use Case Diagram</p>
               <p className="text-gray-600 mt-2">
                 Comprehensive visualization of administrator functionalities in GensanWorks
               </p>

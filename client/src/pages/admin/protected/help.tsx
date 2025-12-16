@@ -251,12 +251,6 @@ export default function AdminHelpPage() {
   return (
     <div className="flex-1 overflow-auto">
       <div className="container mx-auto p-6 space-y-6 max-w-[1920px]">
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Help & Support</h1>
-          <p className="text-slate-600 mt-1">Get answers to your questions and learn how to use GensanWorks</p>
-        </div>
-
         {/* Quick Links */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white rounded-lg border border-slate-200 p-6 hover:border-blue-300 hover:shadow-md transition group">

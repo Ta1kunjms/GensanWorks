@@ -29,7 +29,9 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { authFetch } from "@/lib/auth";
+import { getEmploymentBadgeTone, getEmploymentStatusLabel } from "@/lib/employment";
 import { Input } from "@/components/ui/input";
+import type { Applicant } from "@shared/schema";
 
 interface JobDetails {
   id: string;
@@ -97,13 +99,27 @@ interface ApplicantDetails {
   yearGraduated?: string;
   otherSkillsTraining?: string;
   preferredOccupation?: string;
-  employmentStatus: string;
+  employmentStatus: Applicant["employmentStatus"];
+  employmentStatusDetail?: Applicant["employmentStatusDetail"];
+  selfEmployedCategory?: Applicant["selfEmployedCategory"];
+  selfEmployedCategoryOther?: Applicant["selfEmployedCategoryOther"];
+  unemployedReason?: Applicant["unemployedReason"];
+  unemployedReasonOther?: Applicant["unemployedReasonOther"];
+  unemployedAbroadCountry?: Applicant["unemployedAbroadCountry"];
+  monthsUnemployed?: Applicant["monthsUnemployed"];
   employmentType?: string;
   expectedSalary?: number;
   salaryPeriod?: string;
   preferredWorkLocation?: string;
   civilStatus?: string;
   disability?: string;
+  isOFW?: boolean;
+  isFormerOFW?: boolean;
+  owfCountry?: string;
+  formerOFWCountry?: string;
+  returnToPHDate?: string;
+  is4PSBeneficiary?: boolean;
+  householdID?: string;
   activelyLookingForWork: number;
   willingToWorkImmediately: number;
   whenCanStart?: string;
@@ -197,7 +213,7 @@ export default function JobMatchingPage() {
     try {
       setMatching(true);
       // Removed hardcoded maxResults=100 to allow unlimited qualified applicants
-      const response = await authFetch(`/api/jobs/${jobId}/match?minScore=${minScore}&weights=${encodeURIComponent(JSON.stringify(weights))}`);
+      const response = await authFetch(`/api/jobs/${jobId}/match?minScore=${minScore}&useAI=true&includeInsights=false&weights=${encodeURIComponent(JSON.stringify(weights))}`);
 
       if (!response.ok) {
         throw new Error('Failed to run matching');
@@ -408,7 +424,7 @@ export default function JobMatchingPage() {
         <CardHeader>
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <CardTitle className="text-2xl mb-2">{job.title}</CardTitle>
+              {/* Page title moved to TopNavbar. Section subtitle below. */}
               <CardDescription className="text-base">
                 {job.industry && (
                   <span className="inline-flex items-center mr-4">
@@ -955,8 +971,57 @@ export default function JobMatchingPage() {
                                   {/* Employment */}
                                   <div className="bg-white p-3 rounded-lg">
                                     <p className="text-xs font-semibold text-gray-600 mb-2">EMPLOYMENT STATUS</p>
-                                    <div className="space-y-1 text-sm">
-                                      <p className="font-medium text-gray-800">{details.employmentStatus}</p>
+                                    <div className="space-y-2 text-sm">
+                                      {(() => {
+                                        const summary = getEmploymentStatusLabel(details);
+                                        const tone = getEmploymentBadgeTone(details);
+                                        const toneClassMap: Record<string, string> = {
+                                          employed: "bg-emerald-100 text-emerald-800",
+                                          selfEmployed: "bg-purple-100 text-purple-800",
+                                          unemployed: "bg-rose-100 text-rose-800",
+                                        };
+                                        const badgeClass = toneClassMap[tone] ?? "bg-slate-100 text-slate-800";
+                                        return (
+                                          <span className={`inline-flex px-2 py-1 rounded-full text-xs font-semibold ${badgeClass}`}>
+                                            {summary || details.employmentStatus || "Not specified"}
+                                          </span>
+                                        );
+                                      })()}
+
+                                      {details.employmentStatusDetail && (
+                                        <p className="text-gray-700">
+                                          Branch: {details.employmentStatusDetail}
+                                        </p>
+                                      )}
+
+                                      {details.selfEmployedCategory && (
+                                        <p className="text-gray-700">
+                                          Category: {details.selfEmployedCategory === "Others"
+                                            ? details.selfEmployedCategoryOther || "Others"
+                                            : details.selfEmployedCategory}
+                                        </p>
+                                      )}
+
+                                      {details.unemployedReason && (
+                                        <p className="text-gray-700">
+                                          Reason: {details.unemployedReason === "Others"
+                                            ? details.unemployedReasonOther || "Others"
+                                            : details.unemployedReason}
+                                        </p>
+                                      )}
+
+                                      {details.unemployedReason === "Terminated/Laid off (abroad)" && details.unemployedAbroadCountry && (
+                                        <p className="text-gray-600 text-xs">
+                                          Country: {details.unemployedAbroadCountry}
+                                        </p>
+                                      )}
+
+                                      {typeof details.monthsUnemployed === "number" && (
+                                        <p className="text-gray-600 text-xs">
+                                          Looking for work: {details.monthsUnemployed} month(s)
+                                        </p>
+                                      )}
+
                                       {details.preferredOccupation && (
                                         <p className="text-gray-600">Prefers: {details.preferredOccupation}</p>
                                       )}

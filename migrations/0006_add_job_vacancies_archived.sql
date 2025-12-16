@@ -1,0 +1,1 @@
+-- Placeholder migration to preserve numbering. No schema changes required.

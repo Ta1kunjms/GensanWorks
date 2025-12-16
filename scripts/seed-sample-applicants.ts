@@ -667,15 +667,18 @@ async function seedApplicants() {
       const fullName = `${applicant.firstName} ${applicant.middleName ? applicant.middleName + ' ' : ''}${applicant.surname}`.trim();
 
       await client.execute({
-        sql: `INSERT INTO applicants (
-          id, surname, first_name, middle_name, date_of_birth, sex, religion, 
-          civil_status, height, contact_number, email, barangay, 
-          municipality, province, employment_status, employment_type,
-          is_ofw, is_4ps_beneficiary, education, skills, work_experience,
-          password_hash, role, has_account, created_at, updated_at
+        sql: `INSERT INTO users (
+          id, email, password_hash, has_account, role, surname, first_name, middle_name,
+          date_of_birth, sex, religion, civil_status, height, contact_number, barangay, municipality, province,
+          employment_status, employment_type, is_ofw, is_4ps_beneficiary, education, skills, work_experience,
+          created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         args: [
           id,
+          applicant.email,
+          '$2a$10$samplehashfortesting', // dummy bcrypt hash
+          0,
+          'jobseeker',
           applicant.surname,
           applicant.firstName,
           applicant.middleName || null,
@@ -685,10 +688,9 @@ async function seedApplicants() {
           applicant.civilStatus,
           applicant.height,
           applicant.contactNumber,
-          applicant.email,
           applicant.barangay,
-          "General Santos City",
-          "South Cotabato",
+          'General Santos City',
+          'South Cotabato',
           applicant.employmentStatus,
           applicant.employmentType,
           applicant.isOfw ? 1 : 0,
@@ -696,9 +698,6 @@ async function seedApplicants() {
           JSON.stringify(applicant.education),
           JSON.stringify(applicant.skills),
           JSON.stringify(applicant.workExperience || []),
-          null, // passwordHash - not setting up accounts for sample data
-          "jobseeker",
-          0, // hasAccount
           now,
           now
         ]

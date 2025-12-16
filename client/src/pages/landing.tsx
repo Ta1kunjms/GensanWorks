@@ -1,7 +1,10 @@
+import { useEffect, useRef, useState } from "react";
+import type { ElementType, FormEvent, MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
-import { 
+import type { GeneralSettings, SummaryData } from "@shared/schema";
+import {
   Briefcase, 
   Users, 
   Building2, 
@@ -30,24 +33,13 @@ import {
   Code,
   TrendingDown,
   ArrowUpRight,
+  Bell,
   PhoneCall,
   Mail,
   Video,
   Download,
   Play
 } from "lucide-react";
-import { useState } from "react";
-
-interface PublicStats {
-  jobseekersRegistered: number;
-  employersParticipating: number;
-  jobsMatched: number;
-}
-
-interface SkillData {
-  skill: string;
-  percentage: number;
-}
 
 interface ImpactMetrics {
   avgTimeToInterview: string;
@@ -56,49 +48,387 @@ interface ImpactMetrics {
   yearsOfService: number;
 }
 
+type Partner = {
+  name: string;
+  tagline: string;
+  icon: ElementType;
+};
+
+const industryPartners: Partner[] = [
+  { name: "General Milling Corp", tagline: "Food Manufacturing", icon: Building2 },
+  { name: "SM City General Santos", tagline: "Retail & Lifestyle", icon: Briefcase },
+  { name: "Dole Philippines", tagline: "Agri & Export", icon: Globe },
+  { name: "Gaisano Mall", tagline: "Shopping & Leisure", icon: Star },
+  { name: "Robinsons Place", tagline: "Retail Group", icon: Target },
+  { name: "KCC Mall", tagline: "Regional Retail", icon: TrendingUp },
+  { name: "Mindanao Tech Hub", tagline: "Technology Park", icon: Laptop },
+  { name: "South Cotabato Steelworks", tagline: "Industrial & Steel", icon: Wrench },
+  { name: "SOCCSKSARGEN Medical", tagline: "Healthcare Network", icon: Stethoscope },
+  { name: "Pioneer Contact Center", tagline: "BPO & Support", icon: HeadphonesIcon },
+];
+
+const heroBadgePhrases = [
+  {
+    title: "Smart Matching",
+    description: "AI-assisted recommendations tuned by PESO counselors",
+  },
+  {
+    title: "Verified Employers",
+    description: "Every company undergoes compliance screening",
+  },
+  {
+    title: "Lightning Placement",
+    description: "Interviews arranged within 48 hours on average",
+  },
+];
+
+const heroHighlights: Array<{
+  title: string;
+  detail: string;
+  icon: ElementType;
+  accent: string;
+}> = [
+  { title: "48h Interview Rate", detail: "Candidates hear back within two days", icon: Clock, accent: "bg-blue-100 text-blue-700" },
+  { title: "100% Verified", detail: "No fake job posts or ghost employers", icon: Shield, accent: "bg-emerald-100 text-emerald-700" },
+  { title: "AI + PESO", detail: "Hybrid review ensures better matches", icon: Zap, accent: "bg-amber-100 text-amber-700" },
+  { title: "Regional Reach", detail: "Nationwide jobs curated for GenSan", icon: Globe, accent: "bg-indigo-100 text-indigo-700" },
+];
+
+const heroGradientStages = [
+  "from-slate-50 via-white to-blue-50",
+  "from-blue-50 via-white to-indigo-50",
+  "from-indigo-50 via-white to-slate-50",
+];
+
+const defaultGeneralSettings: GeneralSettings = {
+  siteName: "GensanWorks",
+  siteDescription: "Official Job Assistance Platform of PESO – General Santos City",
+  contactEmail: "admin@gensanworks.com",
+  contactPhone: "+63 283 889 5200",
+  address: "General Santos City, South Cotabato",
+  heroHeadline: "Connecting jobseekers and employers in General Santos City",
+  heroSubheadline: "A single window for opportunities, referrals, and PESO services",
+  primaryCTA: "Browse Jobs",
+  secondaryCTA: "Post a Vacancy",
+  aboutTitle: "Why GensanWorks",
+  aboutBody: "PESO-led platform for job matching, referrals, and analytics across the city.",
+  heroBackgroundImage: "https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=1600&q=80",
+  seoKeywords: "peso gensan jobs, job portal gensan, peso referrals",
+};
+
+const ensureMetaTag = (name: string, content: string) => {
+  if (!content) return;
+  const existing = document.querySelector(`meta[name="${name}"]`);
+  if (existing) {
+    existing.setAttribute("content", content);
+    return;
+  }
+  const tag = document.createElement("meta");
+  tag.setAttribute("name", name);
+  tag.setAttribute("content", content);
+  document.head.appendChild(tag);
+};
+
+const ensureMetaProperty = (property: string, content: string) => {
+  if (!content) return;
+  const existing = document.querySelector(`meta[property="${property}"]`);
+  if (existing) {
+    existing.setAttribute("content", content);
+    return;
+  }
+  const tag = document.createElement("meta");
+  tag.setAttribute("property", property);
+  tag.setAttribute("content", content);
+  document.head.appendChild(tag);
+};
+
+const howItWorksSteps: Array<{
+  id: number;
+  title: string;
+  description: string;
+  icon: ElementType;
+  bullets: string[];
+  accent: string;
+}> = [
+  {
+    id: 1,
+    title: "Create Your Profile",
+    description: "Sign up, upload credentials, and highlight your skills in minutes.",
+    icon: UserCheck,
+    bullets: ["Upload resume & certificates", "Highlight your skills", "Set job preferences"],
+    accent: "from-blue-500/20",
+  },
+  {
+    id: 2,
+    title: "Search & Apply",
+    description: "Curated recommendations, smart filters, and instant notifications.",
+    icon: Search,
+    bullets: ["Personalized job feed", "Realtime status updates", "Direct employer chat"],
+    accent: "from-emerald-500/20",
+  },
+  {
+    id: 3,
+    title: "Get Hired",
+    description: "Track referrals, attend interviews, and sign offers faster.",
+    icon: Briefcase,
+    bullets: ["Referral tracking", "Interview support", "Offer guidance"],
+    accent: "from-purple-500/20",
+  },
+];
+
+const experienceHighlights: Array<{
+  title: string;
+  description: string;
+  icon: ElementType;
+}> = [
+  { title: "Responsive Everywhere", description: "Desktop, tablet, or mobile—continue applications seamlessly.", icon: Smartphone },
+  { title: "Career Coaching", description: "PESO counselors help polish resumes and prep interviews.", icon: GraduationCap },
+  { title: "Human + AI Support", description: "Automations handle busywork while people focus on you.", icon: HeadphonesIcon },
+  { title: "Skills Mapping", description: "Match certificates and NCII levels with in-demand roles instantly.", icon: FileText },
+];
+
+const ctaHighlights: Array<{ label: string; value: string; icon: ElementType }> = [
+  { label: "Job Alerts", value: "Instant", icon: Bell },
+  { label: "Talent Pool", value: "30k+", icon: Users },
+  { label: "Interview Prep", value: "Guided", icon: Video },
+];
+
+const trustSignals: Array<{ title: string; description: string; icon: ElementType; accent: string }> = [
+  { title: "Government Certified", description: "Official PESO platform", icon: Shield, accent: "bg-green-50 text-green-600" },
+  { title: "Data Protected", description: "Secure by design", icon: CheckCircle2, accent: "bg-blue-50 text-blue-600" },
+  { title: "Service Excellence", description: "ISO-aligned workflows", icon: Award, accent: "bg-amber-50 text-amber-600" },
+];
+
+function useAnimatedNumber(target: number, duration = 1200) {
+  const [value, setValue] = useState(0);
+  const previousRef = useRef(0);
+
+  useEffect(() => {
+    let frame: number;
+    let start: number | null = null;
+    const initial = previousRef.current;
+    const difference = target - initial;
+
+    const animate = (timestamp: number) => {
+      if (start === null) start = timestamp;
+      const progress = Math.min((timestamp - start) / duration, 1);
+      setValue(initial + difference * progress);
+      if (progress < 1) {
+        frame = requestAnimationFrame(animate);
+      }
+    };
+
+    frame = requestAnimationFrame(animate);
+    previousRef.current = target;
+    return () => cancelAnimationFrame(frame);
+  }, [target, duration]);
+
+  return Math.max(0, Math.round(value));
+}
+
 export default function Landing() {
   const [email, setEmail] = useState("");
   const [openFaq, setOpenFaq] = useState<number | null>(null);
-  
-  // Fetch real-time statistics from the database
-  const { data: stats, isLoading } = useQuery<PublicStats>({
-    queryKey: ['/api/public/stats'],
+  const queryClient = useQueryClient();
+  const [heroTilt, setHeroTilt] = useState({ x: 0, y: 0 });
+  const [heroGradientIndex, setHeroGradientIndex] = useState(0);
+  const [heroBadgeIndex, setHeroBadgeIndex] = useState(0);
+  const [activeHeroHighlight, setActiveHeroHighlight] = useState(0);
+  const partnerMarqueeItems = [...industryPartners, ...industryPartners];
+  const heroGradientClass = heroGradientStages[heroGradientIndex];
+
+  const { data: generalSettingsData } = useQuery<GeneralSettings>({
+    queryKey: ["settings", "general", "public"],
     queryFn: async () => {
-      const res = await fetch('/api/public/stats');
-      if (!res.ok) throw new Error('Failed to fetch stats');
-      return res.json();
+      const response = await fetch("/api/settings/general/public");
+      if (!response.ok) throw new Error("Failed to fetch general settings");
+      return response.json();
     },
-    refetchInterval: 30000,
-    staleTime: 20000,
+    staleTime: 1000 * 60 * 5,
   });
 
-  // Fetch skills data
-  const { data: skillsData, isLoading: skillsLoading } = useQuery<SkillData[]>({
-    queryKey: ['/api/public/skills'],
+  const generalSettings = generalSettingsData ?? defaultGeneralSettings;
+
+  useEffect(() => {
+    document.title = `${generalSettings.siteName} — ${generalSettings.siteDescription}`;
+    ensureMetaTag("description", generalSettings.siteDescription);
+    ensureMetaTag("keywords", generalSettings.seoKeywords);
+    const url = typeof window !== "undefined" ? window.location.href : "";
+    ensureMetaProperty("og:title", generalSettings.siteName);
+    ensureMetaProperty("og:description", generalSettings.siteDescription);
+    ensureMetaProperty("og:image", generalSettings.heroBackgroundImage);
+    ensureMetaProperty("og:url", url);
+    ensureMetaProperty("twitter:card", "summary_large_image");
+    ensureMetaProperty("twitter:title", generalSettings.siteName);
+    ensureMetaProperty("twitter:description", generalSettings.siteDescription);
+    ensureMetaProperty("twitter:image", generalSettings.heroBackgroundImage);
+    ensureMetaProperty("twitter:url", url);
+  }, [generalSettings]);
+
+  const { data: summaryData, isLoading } = useQuery<SummaryData>({
+    queryKey: ["landing", "summary"],
     queryFn: async () => {
-      const res = await fetch('/api/public/skills');
-      if (!res.ok) throw new Error('Failed to fetch skills');
-      return res.json();
+      const response = await fetch("/api/summary");
+      if (!response.ok) throw new Error("Failed to fetch summary data");
+      return response.json();
     },
-    refetchInterval: 60000,
-    staleTime: 40000,
+    staleTime: 1000 * 60 * 5,
   });
 
-  // Fetch impact metrics
   const { data: impactData, isLoading: impactLoading } = useQuery<ImpactMetrics>({
-    queryKey: ['/api/public/impact'],
+    queryKey: ["landing", "impact"],
     queryFn: async () => {
-      const res = await fetch('/api/public/impact');
-      if (!res.ok) throw new Error('Failed to fetch impact');
-      return res.json();
+      const response = await fetch("/api/public/impact");
+      if (!response.ok) throw new Error("Failed to fetch impact data");
+      return response.json();
     },
-    refetchInterval: 60000,
-    staleTime: 40000,
+    staleTime: 1000 * 60 * 10,
   });
+
+  const animatedJobseekers = useAnimatedNumber(summaryData?.totalApplicants.value ?? 0);
+  const animatedEmployers = useAnimatedNumber(summaryData?.activeEmployers.value ?? 0);
+  const animatedMatches = useAnimatedNumber(summaryData?.successfulReferrals.value ?? 0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setHeroGradientIndex((prev) => (prev + 1) % heroGradientStages.length);
+    }, 9000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const badgeTimer = setInterval(() => {
+      setHeroBadgeIndex((prev) => (prev + 1) % heroBadgePhrases.length);
+    }, 6000);
+    return () => clearInterval(badgeTimer);
+  }, []);
+
+  useEffect(() => {
+    const highlightTimer = setInterval(() => {
+      setActiveHeroHighlight((prev) => (prev + 1) % heroHighlights.length);
+    }, 7000);
+    return () => clearInterval(highlightTimer);
+  }, []);
+
+  useEffect(() => {
+    const endpoints = [
+      { key: ["summary"], url: "/api/summary" },
+      { key: ["recent-activities"], url: "/api/recent-activities" },
+      { key: ["charts", "bar"], url: "/api/charts/bar" },
+      { key: ["charts", "line"], url: "/api/charts/line" },
+      { key: ["charts", "doughnut"], url: "/api/charts/doughnut" },
+      { key: ["referrals"], url: "/api/referrals" },
+    ];
+
+    endpoints.forEach(({ key, url }) => {
+      queryClient.prefetchQuery({
+        queryKey: key,
+        queryFn: async () => {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`Failed to fetch ${url}`);
+          return res.json();
+        },
+        staleTime: 1000 * 60 * 5,
+      });
+    });
+  }, [queryClient]);
+
+  const handleHeroMouseMove = (event: MouseEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const offsetX = event.clientX - (rect.left + rect.width / 2);
+    const offsetY = event.clientY - (rect.top + rect.height / 2);
+    setHeroTilt({
+      x: (offsetX / rect.width) * 12,
+      y: -(offsetY / rect.height) * 12,
+    });
+  };
+
+  const resetHeroTilt = () => setHeroTilt({ x: 0, y: 0 });
+
+  const heroStats = [
+    { label: "Active Jobseekers", value: animatedJobseekers, description: "Profiles verified this quarter" },
+    { label: "Partner Employers", value: animatedEmployers, description: "Business owners hiring now" },
+    { label: "Jobs Matched", value: animatedMatches, description: "Successful placements to date" },
+  ];
+
+  const stats = {
+    jobseekersRegistered: summaryData?.totalApplicants.value ?? 0,
+    employersParticipating: summaryData?.activeEmployers.value ?? 0,
+    jobsMatched: summaryData?.successfulReferrals.value ?? 0,
+  };
+
+  const skillsLoading = isLoading;
+  const skillsData = [
+    { skill: "Customer Support", percentage: 92 },
+    { skill: "Digital Marketing", percentage: 88 },
+    { skill: "Accounting", percentage: 84 },
+    { skill: "Front-End Development", percentage: 81 },
+    { skill: "Healthcare Assistance", percentage: 79 },
+    { skill: "Logistics Management", percentage: 75 },
+    { skill: "Sales Strategy", percentage: 73 },
+    { skill: "Technical Support", percentage: 69 },
+  ];
+
+  type ExpectedSkillsShortage = {
+    skillCluster: string;
+    projectedGap: string;
+    timeframe: string;
+    driver: string;
+    focus: string;
+  };
+
+  const expectedSkillsShortage: ExpectedSkillsShortage[] = [
+    {
+      skillCluster: "AI-ready Developers",
+      projectedGap: "300 roles",
+      timeframe: "Q1–Q3 2025",
+      driver: "Fintech and logistics platforms rolling out automation",
+      focus: "Full stack + data pipeline",
+    },
+    {
+      skillCluster: "Healthcare Support",
+      projectedGap: "220 roles",
+      timeframe: "Next 12 months",
+      driver: "Regional hospital expansion and aging population",
+      focus: "Patient care + inventory",
+    },
+    {
+      skillCluster: "Certified Welders",
+      projectedGap: "180 roles",
+      timeframe: "Before new export hub opens",
+      driver: "Fabrication contracts in SOCCSKSARGEN",
+      focus: "NC II + safety compliance",
+    },
+    {
+      skillCluster: "CX Specialists",
+      projectedGap: "150 roles",
+      timeframe: "Next 2 quarters",
+      driver: "BPO providers scaling GenSan pods",
+      focus: "Omnichannel support",
+    },
+  ];
+
+  const shortageInitiatives = [
+    {
+      title: "Scholarship Slots",
+      description: "Allocate 120 TESDA-backed seats for AI and automation tracks.",
+      owner: "PESO + TESDA",
+    },
+    {
+      title: "Employer Bootcamps",
+      description: "Run joint clinics with hospitals and steelworks to co-design training.",
+      owner: "Industry Desk",
+    },
+    {
+      title: "CX Career Sprint",
+      description: "Two-week finishing course to convert hospitality workers into CX hires.",
+      owner: "Job Center",
+    },
+  ];
 
   const formatNumber = (num: number) => num.toLocaleString();
 
-  const handleNewsletterSubmit = (e: React.FormEvent) => {
+  const handleNewsletterSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     alert("Thank you for subscribing to our newsletter!");
     setEmail("");
@@ -166,95 +496,162 @@ export default function Landing() {
         </div>
       </header>
 
-      {/* Hero Section - Clean and professional */}
-      <section className="relative w-full bg-gradient-to-b from-slate-50 to-white overflow-hidden">
-        {/* Subtle decorative element */}
-        <div className="absolute top-20 right-0 w-[500px] h-[500px] bg-blue-50 rounded-full opacity-40 blur-3xl"></div>
-        
+      {/* Hero Section */}
+      <section className={`relative w-full overflow-hidden bg-gradient-to-br ${heroGradientClass}`}>
+        <div
+          className="absolute inset-0 opacity-10 pointer-events-none"
+          style={{
+            backgroundImage: generalSettings.heroBackgroundImage ? `url('${generalSettings.heroBackgroundImage}')` : undefined,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        />
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute -top-32 -right-16 w-[520px] h-[520px] bg-blue-200/40 blur-3xl rounded-full spin-slow" />
+          <div className="absolute -bottom-28 -left-20 w-[480px] h-[480px] bg-emerald-200/30 blur-3xl rounded-full spin-slower" />
+          <div className="absolute inset-x-0 top-1/3 h-32 bg-white/40 blur-2xl" />
+        </div>
+
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-28">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            {/* Left content */}
-            <div className="space-y-7">
-              <div className="inline-flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-full border border-blue-100">
-                <Shield className="w-3.5 h-3.5 text-blue-600" />
-                <span className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Official Government Platform</span>
+          <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-12 items-center">
+            <div className="space-y-8">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/80 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.35em] text-slate-700 shadow-sm">
+                <span>{generalSettings.siteName}</span>
+                <span className="text-blue-600">{heroBadgePhrases[heroBadgeIndex].title}</span>
               </div>
-              
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-slate-900 leading-[1.1] tracking-tight">
-                Connect Talent with<br/>
-                <span className="text-blue-600">Opportunity</span>
+
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-slate-900 leading-tight tracking-tight">
+                {generalSettings.heroHeadline}
               </h1>
-              
-              <p className="text-lg text-slate-600 leading-relaxed max-w-xl">
-                The official employment facilitation platform of General Santos City. Empowering careers, strengthening businesses, building our community's future together.
+
+              <p className="text-lg text-slate-600 leading-relaxed max-w-2xl">
+                {generalSettings.heroSubheadline}
               </p>
-              
-              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {heroHighlights.map((highlight, index) => (
+                  <div
+                    key={highlight.title}
+                    onMouseEnter={() => setActiveHeroHighlight(index)}
+                    className={`rounded-2xl border backdrop-blur hover-lift transition-all duration-300 p-4 flex items-start gap-3 ${index === activeHeroHighlight ? 'bg-white/90 border-white shadow-lg' : 'bg-white/60 border-white/60'}`}
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${highlight.accent}`}>
+                      <highlight.icon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-900">{highlight.title}</p>
+                      <p className="text-sm text-slate-600">{highlight.detail}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-4 pt-4">
                 <a href="/jobseeker/signup" className="flex-1 sm:flex-initial">
-                  <Button size="lg" className="w-full sm:w-auto text-sm px-8 py-6 bg-blue-600 hover:bg-blue-700">
-                    Find Your Dream Job
-                    <ChevronRight className="w-4 h-4 ml-1" />
+                  <Button size="lg" className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 px-8 py-6 text-base font-semibold">
+                    {generalSettings.primaryCTA}
+                    <ChevronRight className="w-4 h-4 ml-2" />
                   </Button>
                 </a>
                 <a href="/employer/signup" className="flex-1 sm:flex-initial">
-                  <Button variant="outline" size="lg" className="w-full sm:w-auto text-sm px-8 py-6 border-slate-300 hover:bg-slate-50">
-                    Hire Top Talent
+                  <Button variant="outline" size="lg" className="w-full sm:w-auto border-slate-300/70 bg-white/80 backdrop-blur px-8 py-6 text-base font-semibold text-slate-900 hover:bg-white">
+                    {generalSettings.secondaryCTA}
                   </Button>
                 </a>
               </div>
-              
-              {/* Quick access links */}
-              <div className="flex flex-wrap gap-5 pt-4">
-                <a href="/jobseeker/login" className="text-sm text-slate-500 hover:text-slate-900 cursor-pointer transition-colors">
-                  Jobseeker Login →
-                </a>
-                <a href="/employer/login" className="text-sm text-slate-500 hover:text-slate-900 cursor-pointer transition-colors">
-                  Employer Login →
-                </a>
+
+              <p className="text-sm text-slate-500">
+                Need quick access? <a href="/jobseeker/login" className="font-semibold text-blue-600 hover:underline">Jobseeker Login</a> · <a href="/employer/login" className="font-semibold text-blue-600 hover:underline">Employer Login</a>
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
+                {heroStats.map((stat) => (
+                  <div key={stat.label} className="rounded-2xl border border-white/70 bg-white/80 p-5 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">{stat.label}</p>
+                    {isLoading ? (
+                      <Skeleton className="h-8 w-24 mb-1" />
+                    ) : (
+                      <p className="text-3xl font-bold text-slate-900">{formatNumber(stat.value)}+</p>
+                    )}
+                    <p className="text-xs text-slate-500">{stat.description}</p>
+                  </div>
+                ))}
               </div>
             </div>
-            
-            {/* Right content - Stats cards */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
-                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4">
-                  <Users className="w-6 h-6 text-blue-600" />
-                </div>
-                <div>
-                  {isLoading ? (
-                    <Skeleton className="h-8 w-24 mb-1" />
-                  ) : (
-                    <div className="text-3xl font-bold text-slate-900 mb-0.5">{formatNumber(stats?.jobseekersRegistered || 0)}+</div>
-                  )}
-                  <p className="text-sm text-slate-600">Active Jobseekers</p>
+
+            <div className="relative" onMouseMove={handleHeroMouseMove} onMouseLeave={resetHeroTilt}>
+              <div
+                className="relative bg-white/80 backdrop-blur-xl border border-white/60 rounded-[32px] p-8 shadow-2xl overflow-hidden min-h-[420px]"
+                style={{ transform: `rotateX(${heroTilt.y}deg) rotateY(${heroTilt.x}deg)`, transition: 'transform 0.12s ease-out' }}
+              >
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-50/70 via-transparent to-indigo-100/60 pointer-events-none" />
+                <div className="relative space-y-6">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase">Interview speed</p>
+                      <p className="text-3xl font-bold text-slate-900">
+                        {impactLoading ? <Skeleton className="h-8 w-28" /> : impactData?.avgTimeToInterview || '48 hrs'}
+                      </p>
+                      <p className="text-xs text-slate-500">Average time to first interview</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg glow-pulse">
+                      <Zap className="w-6 h-6" />
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-100 bg-white/90 p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-semibold text-slate-900">Live matches</p>
+                      <span className="text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Realtime</span>
+                    </div>
+                    <p className="text-3xl font-bold text-slate-900">
+                      {isLoading ? <Skeleton className="h-8 w-24" /> : formatNumber(Math.max(animatedMatches, 0))}
+                    </p>
+                    <p className="text-xs text-slate-500">Successful placements tracked</p>
+                    <div className="mt-3 flex -space-x-2">
+                      {['AL', 'JM', 'KR'].map((initials) => (
+                        <div key={initials} className="w-8 h-8 rounded-full bg-slate-100 border-2 border-white text-xs font-semibold text-slate-600 flex items-center justify-center">
+                          {initials}
+                        </div>
+                      ))}
+                      <span className="text-xs text-slate-500 ml-3">New hires this week</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="rounded-2xl border border-slate-100 bg-gradient-to-br from-blue-600 to-indigo-600 text-white p-4">
+                      <p className="text-xs uppercase tracking-wide text-white/70">Alerts</p>
+                      <p className="text-2xl font-semibold">
+                        {impactLoading ? <Skeleton className="h-7 w-16 bg-white/20" /> : impactData?.satisfactionRate || '94%'}
+                      </p>
+                      <p className="text-xs text-white/75">Platform satisfaction</p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-100 bg-white/95 p-4">
+                      <p className="text-xs uppercase tracking-wide text-slate-500">Avg salary</p>
+                      <p className="text-2xl font-semibold text-slate-900">
+                        {impactLoading ? <Skeleton className="h-7 w-16" /> : impactData?.avgSalary || '₱32.5K'}
+                      </p>
+                      <p className="text-xs text-slate-500">Starting offers</p>
+                    </div>
+                  </div>
                 </div>
               </div>
-              
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-shadow mt-6">
-                <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-4">
-                  <Building2 className="w-6 h-6 text-green-600" />
-                </div>
-                <div>
-                  {isLoading ? (
-                    <Skeleton className="h-8 w-24 mb-1" />
-                  ) : (
-                    <div className="text-3xl font-bold text-slate-900 mb-0.5">{formatNumber(stats?.employersParticipating || 0)}+</div>
-                  )}
-                  <p className="text-sm text-slate-600">Partner Companies</p>
+
+              <div className="absolute -left-10 top-12 hidden lg:block">
+                <div className="rounded-2xl bg-white border border-slate-100 shadow-lg p-4 w-48 floating-spark">
+                  <p className="text-xs text-slate-500 mb-1">Next orientation</p>
+                  <p className="text-base font-semibold text-slate-900">Wednesday · 9:00 AM</p>
+                  <p className="text-xs text-slate-500">City Hall PESO Hub</p>
                 </div>
               </div>
-              
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-shadow col-span-2">
-                <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-4">
-                  <Briefcase className="w-6 h-6 text-purple-600" />
-                </div>
-                <div>
-                  {isLoading ? (
-                    <Skeleton className="h-8 w-24 mb-1" />
-                  ) : (
-                    <div className="text-3xl font-bold text-slate-900 mb-0.5">{formatNumber(stats?.jobsMatched || 0)}+</div>
-                  )}
-                  <p className="text-sm text-slate-600">Successful Job Matches</p>
+              <div className="absolute -right-8 -bottom-6 hidden lg:block">
+                <div className="rounded-2xl bg-white/95 border border-slate-100 shadow-lg p-4 w-40">
+                  <p className="text-xs text-slate-500 mb-1">Instant alerts</p>
+                  <p className="text-base font-semibold text-slate-900">15 new job leads</p>
+                  <div className="mt-2 flex items-center gap-1 text-emerald-600 text-xs font-semibold">
+                    <TrendingUp className="w-3.5 h-3.5" />
+                    +6% today
+                  </div>
                 </div>
               </div>
             </div>
@@ -262,92 +659,46 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Trust Indicators */}
-      <section className="w-full bg-white border-y border-slate-100 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row items-center justify-center gap-8 md:gap-12">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
-                <Shield className="w-5 h-5 text-green-600" />
+      {/* Trust + Partners */}
+      <section className="relative w-full bg-white border-y border-slate-100 py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+          <div className="flex flex-wrap items-center justify-center gap-6">
+            {trustSignals.map((signal) => (
+              <div key={signal.title} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50/60 px-5 py-3">
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${signal.accent}`}>
+                  <signal.icon className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{signal.title}</p>
+                  <p className="text-xs text-slate-500">{signal.description}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Government Certified</p>
-                <p className="text-xs text-slate-500">Official PESO Platform</p>
-              </div>
-            </div>
-            <div className="hidden md:block w-px h-12 bg-slate-200"></div>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-                <CheckCircle2 className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Data Protected</p>
-                <p className="text-xs text-slate-500">Secure & Confidential</p>
-              </div>
-            </div>
-            <div className="hidden md:block w-px h-12 bg-slate-200"></div>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center">
-                <Award className="w-5 h-5 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Quality Service</p>
-                <p className="text-xs text-slate-500">ISO Compliant</p>
-              </div>
+            ))}
+          </div>
+
+          <div className="text-center">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-[0.4em] mb-3">Trusted by Regional Employers</p>
+            <h2 className="text-2xl font-bold text-slate-900">Partner network expanding weekly</h2>
+          </div>
+
+          <div className="overflow-hidden">
+            <div className="flex gap-4 brand-marquee" aria-hidden="true">
+              {partnerMarqueeItems.map((partner, index) => (
+                <div key={`${partner.name}-${index}`} className="min-w-[220px] rounded-2xl border border-slate-100 bg-white px-5 py-4 flex items-center gap-3 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center">
+                    <partner.icon className="w-5 h-5 text-slate-500" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-sm font-semibold text-slate-900">{partner.name}</p>
+                    <p className="text-xs text-slate-500">{partner.tagline}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       </section>
 
-      {/* Trusted Partners / Industry Leaders */}
-      <section className="w-full bg-slate-50 py-14">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-10">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Trusted By Leading Companies</p>
-            <h2 className="text-2xl font-bold text-slate-900">Our Industry Partners</h2>
-          </div>
-          
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 items-center">
-            {/* Partner logos - using placeholder boxes with company names */}
-            <div className="flex items-center justify-center p-5 bg-white rounded-xl hover:shadow-sm transition-shadow border border-slate-100">
-              <div className="text-center">
-                <Building2 className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
-                <p className="text-xs font-medium text-slate-600">General Milling Corp</p>
-              </div>
-            </div>
-            <div className="flex items-center justify-center p-5 bg-white rounded-xl hover:shadow-sm transition-shadow border border-slate-100">
-              <div className="text-center">
-                <Building2 className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
-                <p className="text-xs font-medium text-slate-600">SM City GenSan</p>
-              </div>
-            </div>
-            <div className="flex items-center justify-center p-5 bg-white rounded-xl hover:shadow-sm transition-shadow border border-slate-100">
-              <div className="text-center">
-                <Building2 className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
-                <p className="text-xs font-medium text-slate-600">Dole Philippines</p>
-              </div>
-            </div>
-            <div className="flex items-center justify-center p-5 bg-white rounded-xl hover:shadow-sm transition-shadow border border-slate-100">
-              <div className="text-center">
-                <Building2 className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
-                <p className="text-xs font-medium text-slate-600">Gaisano Mall</p>
-              </div>
-            </div>
-            <div className="flex items-center justify-center p-5 bg-white rounded-xl hover:shadow-sm transition-shadow border border-slate-100">
-              <div className="text-center">
-                <Building2 className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
-                <p className="text-xs font-medium text-slate-600">Robinsons Place</p>
-              </div>
-            </div>
-            <div className="flex items-center justify-center p-5 bg-white rounded-xl hover:shadow-sm transition-shadow border border-slate-100">
-              <div className="text-center">
-                <Building2 className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
-                <p className="text-xs font-medium text-slate-600">KCC Mall</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* How It Works Section */}
       <section id="how-it-works" className="w-full py-20 bg-white">
@@ -445,6 +796,59 @@ export default function Landing() {
                   </li>
                 </ul>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Experience Layer */}
+      <section className="relative w-full bg-slate-900 text-white py-20 overflow-hidden">
+        <div className="absolute inset-0 opacity-30">
+          <div className="absolute -top-24 right-0 w-64 h-64 bg-blue-500 blur-[120px]" />
+          <div className="absolute bottom-0 left-10 w-80 h-80 bg-indigo-500 blur-[140px]" />
+        </div>
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid lg:grid-cols-[0.9fr_1.1fr] gap-12 items-center">
+            <div className="space-y-6">
+              <p className="text-xs font-semibold tracking-[0.4em] uppercase text-blue-200">Experience</p>
+              <h2 className="text-3xl md:text-4xl font-bold leading-tight">
+                Human guidance meets automation for every jobseeker and employer.
+              </h2>
+              <p className="text-base text-slate-200">
+                Orientation sessions, coaching, and mobile responsiveness make the platform feel bespoke. Everything is designed so you can start applications at City Hall, continue on your phone, and finish at home.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <a href="/contact">
+                  <Button size="lg" className="bg-white text-slate-900 hover:bg-slate-100 px-6 py-5 text-sm font-semibold">
+                    Schedule Orientation
+                  </Button>
+                </a>
+                <a href="/help">
+                  <Button variant="outline" size="lg" className="border-white/40 text-white hover:bg-white/10 px-6 py-5 text-sm font-semibold">
+                    See Support Programs
+                  </Button>
+                </a>
+              </div>
+              <div className="inline-flex items-center gap-4 rounded-2xl border border-white/20 bg-white/5 px-5 py-3">
+                <div className="w-10 h-10 bg-white/15 rounded-xl flex items-center justify-center">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Serving General Santos for {impactLoading ? '25+' : `${impactData?.yearsOfService || 25}+`} years</p>
+                  <p className="text-xs text-slate-200">Generational employment support</p>
+                </div>
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              {experienceHighlights.map((item) => (
+                <div key={item.title} className="rounded-2xl bg-white/5 border border-white/15 p-5 hover:bg-white/10 transition-colors">
+                  <div className="w-11 h-11 rounded-xl bg-white/10 flex items-center justify-center mb-4">
+                    <item.icon className="w-5 h-5 text-white" />
+                  </div>
+                  <p className="font-semibold text-lg mb-1">{item.title}</p>
+                  <p className="text-sm text-slate-200 leading-relaxed">{item.description}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -624,10 +1028,10 @@ export default function Landing() {
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div>
               <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-5">
-                Why Choose GensanWorks?
+                {generalSettings.aboutTitle}
               </h2>
               <p className="text-lg text-slate-600 mb-8 leading-relaxed">
-                We provide a trusted, efficient, and secure platform backed by PESO General Santos City's credibility and commitment to excellence.
+                {generalSettings.aboutBody}
               </p>
               
               <div className="space-y-6">
@@ -1140,6 +1544,79 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Expected Skills Shortage Section */}
+      <section className="w-full bg-white py-16 border-t border-slate-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-10">
+            <div className="w-14 h-14 bg-rose-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+              <TrendingDown className="w-7 h-7 text-rose-600" />
+            </div>
+            <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-2">Expected Skills Shortage (Demo Insights)</h2>
+            <p className="text-base text-slate-600 max-w-2xl mx-auto">
+              Mock projections crafted with PESO planners to illustrate which roles may run short over the next few quarters.
+              Real dashboards will wire up once the labor market observatory goes live.
+            </p>
+          </div>
+
+          <div className="grid lg:grid-cols-[1.5fr_0.8fr] gap-8">
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <p className="text-xs font-semibold text-rose-600 uppercase tracking-[0.25em]">Forecast</p>
+                  <h3 className="text-xl font-bold text-slate-900">Clusters likely to feel the crunch</h3>
+                </div>
+                <span className="text-xs text-slate-500">Demo dataset</span>
+              </div>
+              <div className="space-y-4">
+                {expectedSkillsShortage.map((item) => (
+                  <div key={item.skillCluster} className="bg-white rounded-xl border border-slate-200 p-4 hover:border-rose-200 transition-colors">
+                    <div className="flex flex-wrap items-center gap-3 mb-2">
+                      <span className="text-sm font-semibold text-rose-600 bg-rose-50 px-3 py-1 rounded-full">
+                        {item.projectedGap}
+                      </span>
+                      <p className="text-sm text-slate-500 font-medium">{item.timeframe}</p>
+                    </div>
+                    <h4 className="text-lg font-semibold text-slate-900">{item.skillCluster}</h4>
+                    <p className="text-sm text-slate-600 mt-1">Driver: {item.driver}</p>
+                    <p className="text-xs uppercase tracking-wide text-slate-400 mt-2">Priority Focus</p>
+                    <p className="text-sm font-semibold text-slate-900">{item.focus}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-5">
+              <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-lg">
+                <p className="text-xs uppercase tracking-[0.35em] text-white/70">Suggested Actions</p>
+                <h3 className="text-2xl font-bold mt-2">What PESO can launch next</h3>
+                <p className="text-sm text-white/80 mt-2">
+                  These demo playbooks turn insights into programs. Swap them for live projects later.
+                </p>
+              </div>
+              {shortageInitiatives.map((initiative) => (
+                <div key={initiative.title} className="border border-slate-200 rounded-2xl p-5 bg-white shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold text-slate-900">{initiative.title}</h4>
+                    <span className="text-xs text-blue-600 font-semibold bg-blue-50 px-2.5 py-1 rounded-full">
+                      {initiative.owner}
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-600">{initiative.description}</p>
+                </div>
+              ))}
+              <div className="rounded-2xl border border-dashed border-slate-300 p-5 bg-slate-50">
+                <p className="text-xs uppercase tracking-[0.3em] text-slate-500">More ideas</p>
+                <ul className="mt-2 space-y-2 text-sm text-slate-700 list-disc list-inside">
+                  <li>Publish quarterly shortage bulletin PDF</li>
+                  <li>Embed sign-up for fast-track scholarships</li>
+                  <li>Open employer pledge board for co-funding</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* FAQ Section */}
       <section className="w-full bg-white py-20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1313,24 +1790,44 @@ export default function Landing() {
       </section>
 
       {/* Call to Action */}
-      <section className="w-full bg-white py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-slate-900 rounded-2xl p-10 lg:p-14 text-center">
-            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Ready to Start Your Journey?</h2>
-            <p className="text-base text-slate-300 mb-8 max-w-2xl mx-auto">
-              Join thousands of jobseekers and employers who have found success through GensanWorks. Your next opportunity is just a click away.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <a href="/jobseeker/signup">
-                <Button size="lg" className="bg-blue-600 hover:bg-blue-700 px-8 py-5 text-sm font-semibold rounded-lg">
-                  Start as Jobseeker
-                </Button>
-              </a>
-              <a href="/employer/signup">
-                <Button variant="outline" size="lg" className="bg-white text-slate-900 hover:bg-slate-100 border-0 px-8 py-5 text-sm font-semibold rounded-lg">
-                  Start as Employer
-                </Button>
-              </a>
+      <section className="w-full bg-white py-20">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="relative overflow-hidden rounded-[32px] bg-gradient-to-br from-blue-600 via-indigo-600 to-slate-900 text-white p-10 lg:p-14 shadow-2xl">
+            <div className="absolute inset-y-0 right-0 w-1/2 bg-white/5 blur-3xl" />
+            <div className="relative grid md:grid-cols-[1.1fr_0.9fr] gap-10 items-center">
+              <div className="space-y-5">
+                <p className="text-xs font-semibold tracking-[0.45em] uppercase text-white/70">Next Steps</p>
+                <h2 className="text-3xl md:text-4xl font-bold leading-tight">
+                  Ready to turn applications into job offers?
+                </h2>
+                <p className="text-base text-white/80">
+                  Whether you're a jobseeker or an employer, GensanWorks keeps hiring conversations moving with instant alerts, guided interviews, and PESO-backed trust.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <a href="/jobseeker/signup" className="flex-1 sm:flex-initial">
+                    <Button size="lg" className="w-full sm:w-auto bg-white text-slate-900 hover:bg-slate-100 px-8 py-5 text-sm font-semibold">
+                      Create Jobseeker Account
+                    </Button>
+                  </a>
+                  <a href="/employer/signup" className="flex-1 sm:flex-initial">
+                    <Button variant="outline" size="lg" className="w-full sm:w-auto border-white/60 text-white hover:bg-white/10 px-8 py-5 text-sm font-semibold">
+                      Open Employer Portal
+                    </Button>
+                  </a>
+                </div>
+              </div>
+              <div className="grid sm:grid-cols-3 gap-4">
+                {ctaHighlights.map((item) => (
+                  <div key={item.label} className="rounded-2xl border border-white/25 bg-white/10 backdrop-blur p-4">
+                    <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center mb-3">
+                      <item.icon className="w-5 h-5 text-white" />
+                    </div>
+                    <p className="text-sm font-semibold">{item.label}</p>
+                    <p className="text-2xl font-bold">{item.value}</p>
+                    <p className="text-xs text-white/70">Included for free</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -1357,20 +1854,18 @@ export default function Landing() {
             <div>
               <h3 className="font-bold text-slate-900 mb-5 text-sm">Contact Us</h3>
               <ul className="space-y-2.5 text-sm">
-                <li className="text-slate-700">
-                  4th Flr. GSC Investment Action Center Building, City Hall Compound, GSC
-                </li>
+                <li className="text-slate-700">{generalSettings.address}</li>
                 <li>
                   <a href="/contact" className="text-primary hover:underline font-medium">PESO Helpdesk</a>
                 </li>
                 <li>
-                  <a href="tel:+63835533479" className="text-slate-600 hover:text-primary transition-colors">
-                    📞 (083) 553 3479
+                  <a href={`tel:${generalSettings.contactPhone}`} className="text-slate-600 hover:text-primary transition-colors">
+                    📞 {generalSettings.contactPhone}
                   </a>
                 </li>
                 <li>
-                  <a href="mailto:peso_gensan@yahoo.com" className="text-slate-600 hover:text-primary transition-colors">
-                    ✉️ peso_gensan@yahoo.com
+                  <a href={`mailto:${generalSettings.contactEmail}`} className="text-slate-600 hover:text-primary transition-colors">
+                    ✉️ {generalSettings.contactEmail}
                   </a>
                 </li>
               </ul>

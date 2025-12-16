@@ -1,39 +1,75 @@
-node_modules
-dist
+node_modules/
+dist/
 .DS_Store
 server/public
 vite.config.ts.*
 *.tar.gz
 .env
-server/ai-job-matcher.ts
 
 # IDE and editor folders
 .vscode/
+.idea/
 .replit
 .local/
+*.swp
 
 # Environment and secrets
 .env*
 
+# Local persisted settings (may include secrets)
+server/data/auth-settings.json
+server/data/general-settings.json
+data/auth-settings.json
+data/general-settings.json
+
 # Database and local data
 app.db
+app.db-wal
+app.db-shm
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+app.test*.db*
+*.db-journal
+*.db.bak*
+*.bak
+*.bak_*
+*.db.backup*
+app_backup*.db
 gensan_works.db
 tmp_match.json
+
+# Data exports (often contain personal data)
+*_table.csv
+applicants_table.csv
+employers_table.csv
 
 # Logs
 dev.log
 server.log
+*.log
 
-# Build and output
-dist/
-node_modules/
-
-# System files
-.DS_Store
+# Test outputs
+coverage/
+test-results/
+playwright-report/
 
 # Test and temp files
 test_*.py
-tests/
+
+# Scratch files
+temp_*.ts
+temp_*.sql
 
 # Asset and uploads
 attached_assets/
+uploads/
+
+# Windows
+Thumbs.db
+
+# Local sqlite tools (do not commit binaries)
+sqlite-tools-win-x64-*/
+sqlite3*.exe
+sqldiff.exe

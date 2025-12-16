@@ -6,14 +6,14 @@ interface EmploymentStatusChartProps {
   data?: {
     employed: number;
     unemployed: number;
-    selfEmployed: number;
-    newEntrant: number;
+    // selfEmployed: number; // Removed
+    // newEntrant: number; // Removed
   };
 }
 
 export function EmploymentStatusChart({ 
   isLoading, 
-  data = { employed: 0, unemployed: 0, selfEmployed: 0, newEntrant: 0 }
+  data = { employed: 0, unemployed: 0 } // Removed selfEmployed
 }: EmploymentStatusChartProps) {
   if (isLoading) {
     return <Skeleton className="w-full h-[350px]" />;
@@ -22,8 +22,8 @@ export function EmploymentStatusChart({
   const chartData = [
     { name: "Employed", value: data.employed, color: "#10b981" },
     { name: "Unemployed", value: data.unemployed, color: "#ef4444" },
-    { name: "Self-Employed", value: data.selfEmployed, color: "#f59e0b" },
-    { name: "New Entrant", value: data.newEntrant, color: "#3b82f6" },
+    // { name: "Self-Employed", value: data.selfEmployed, color: "#f59e0b" }, // Removed
+    // { name: "New Entrant", value: data.newEntrant, color: "#3b82f6" }, // Removed
   ].filter(item => item.value > 0);
 
   if (chartData.length === 0) {
@@ -52,7 +52,7 @@ export function EmploymentStatusChart({
           ))}
         </Pie>
         <Tooltip formatter={(value: number) => value.toString()} />
-        <Legend />
+        {/* Removed Legend to avoid 'undefined' label */}
       </PieChart>
     </ResponsiveContainer>
   );

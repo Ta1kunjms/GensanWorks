@@ -3,41 +3,93 @@
  * Route: /jobseeker/jobs
  * Only accessible to users with role='jobseeker' or 'freelancer'
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { 
-  Briefcase, Eye, Search, Filter, SlidersHorizontal, 
-  Bookmark, BookmarkCheck, ChevronDown, MapPin, 
-  DollarSign, GraduationCap, Clock, Building2, X,
-  ArrowUpDown, TrendingUp, Calendar
+import {
+  Briefcase,
+  Eye,
+  Search,
+  Filter,
+  SlidersHorizontal,
+  Clock,
+  Bookmark,
+  BookmarkCheck,
+  Share2,
+  DollarSign,
+  GraduationCap,
+  Building2,
+  X,
+  ArrowUpDown,
+  TrendingUp,
+  Sparkles,
+  ShieldCheck,
 } from 'lucide-react';
+import { CompactJobCard } from '@/components/compact-job-card';
 import { ViewJobVacancyModal } from '@/components/view-job-vacancy-modal';
 import { ApplyJobModal } from '@/components/apply-job-modal';
-import { formatRelativeTime } from '@/lib/time-utils';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import type { JobVacancy } from '@shared/schema';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import type { Job } from '@shared/schema';
 
+const SPOTLIGHT_FILTERS = [
+  { value: 'all', label: 'All jobs', description: 'Every role that matches your filters' },
+  { value: 'trending', label: 'New this week', description: 'Posted within the last 7 days' },
+  { value: 'highSalary', label: 'Top salary', description: 'Starting pay of ₱30k+' },
+  { value: 'entryLevel', label: 'Entry level', description: '0-1 year experience' },
+  { value: 'saved', label: 'Saved roles', description: 'Bookmarked opportunities' },
+] as const;
+
+const JOB_TYPE_LABELS: Record<string, string> = {
+  P: 'Permanent (P)',
+  T: 'Temporary (T)',
+  C: 'Contractual (C)',
+};
+
+type SpotlightFilter = (typeof SPOTLIGHT_FILTERS)[number]['value'];
+type ActiveFilterBadge = { key: string; label: string; clear: () => void };
+type SortBy = 'date' | 'salary' | 'relevance';
+
+const filterJobsBySpotlight = (value: SpotlightFilter, jobs: Job[], savedJobs: Set<string>) => {
+  if (value === 'saved') {
+    return jobs.filter((job) => job.id && savedJobs.has(job.id));
+  }
+
+  if (value === 'trending') {
+    const reference = new Date();
+    reference.setDate(reference.getDate() - 7);
+    return jobs.filter((job) => {
+      if (!job.createdAt) return false;
+      const createdAt = new Date(job.createdAt);
+      return !Number.isNaN(createdAt.valueOf()) && createdAt >= reference;
+    });
+  }
+
+  if (value === 'highSalary') {
+    return jobs.filter((job) => (job.startingSalaryOrWage || 0) >= 30000);
+  }
+
+  if (value === 'entryLevel') {
+    return jobs.filter((job) => (job.yearsOfExperienceRequired ?? 0) <= 1);
+  }
+
+  return jobs;
+};
 
 export default function JobseekerJobsPage() {
   const { toast } = useToast();
-  const [vacancies, setVacancies] = useState<JobVacancy[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [selectedVacancyId, setSelectedVacancyId] = useState<string | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [applyModalOpen, setApplyModalOpen] = useState(false);
-  const [selectedVacancyForApply, setSelectedVacancyForApply] = useState<JobVacancy | null>(null);
-  const [showFilters, setShowFilters] = useState(true);
+  const [selectedJobForApply, setSelectedJobForApply] = useState<Job | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
   const [savedJobs, setSavedJobs] = useState<Set<string>>(new Set());
-  
-  // Filter states
+  const openedFromParam = useRef(false);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [minSalary, setMinSalary] = useState('');
   const [maxSalary, setMaxSalary] = useState('');
@@ -46,20 +98,16 @@ export default function JobseekerJobsPage() {
   const [maxExperience, setMaxExperience] = useState('');
   const [industry, setIndustry] = useState('');
   const [jobStatusFilter, setJobStatusFilter] = useState('');
-  const [sortBy, setSortBy] = useState<'date' | 'salary' | 'relevance'>('date');
+  const [sortBy, setSortBy] = useState<SortBy>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  
-  // Pagination
+  const [spotlightFilter, setSpotlightFilter] = useState<SpotlightFilter>('all');
+  const [highlightJobId, setHighlightJobId] = useState<string | null>(null);
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
   const [page, setPage] = useState(1);
   const itemsPerPage = 12;
 
-  useEffect(() => {
-    fetchVacancies();
-    loadSavedJobs();
-  }, [searchQuery, minSalary, maxSalary, educationLevel, minExperience, maxExperience, 
-      industry, jobStatusFilter, sortBy, sortOrder, page]);
-
-  const fetchVacancies = async () => {
+  const fetchJobs = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -71,66 +119,127 @@ export default function JobseekerJobsPage() {
       if (maxExperience) params.append('maxExperience', maxExperience);
       if (industry) params.append('industry', industry);
       if (jobStatusFilter) params.append('jobStatus', jobStatusFilter);
+      // Always fetch only approved jobs for jobseekers
+      params.append('status', 'approved');
       params.append('sortBy', sortBy);
       params.append('sortOrder', sortOrder);
       params.append('limit', itemsPerPage.toString());
       params.append('offset', ((page - 1) * itemsPerPage).toString());
-      
-      params.append('limit', '10000');
-      const res = await fetch(`/api/job-vacancies?${params.toString()}`);
-      if (!res.ok) throw new Error('Failed to fetch job vacancies');
+
+      const res = await fetch(`/api/jobs?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch jobs');
       const data = await res.json();
-      setVacancies(data.vacancies || []);
-      setTotal(data.total || 0);
+      const jobsList = Array.isArray(data) ? data : data?.jobs || [];
+      const sanitized = jobsList.filter((job: any) => !job.archived);
+      setJobs(sanitized);
+      const totalCount = typeof data?.total === 'number' ? data.total : sanitized.length;
+      setTotal(totalCount);
     } catch (error: any) {
       toast({
         title: 'Error',
-        description: error.message,
+        description: error?.message || 'Unable to load job listings',
         variant: 'destructive',
       });
     } finally {
       setLoading(false);
     }
   };
-  
+
   const loadSavedJobs = () => {
     const saved = localStorage.getItem('savedJobs');
     if (saved) {
       setSavedJobs(new Set(JSON.parse(saved)));
     }
   };
-  
-  const toggleSaveJob = (jobId: string) => {
-    const newSaved = new Set(savedJobs);
-    if (newSaved.has(jobId)) {
-      newSaved.delete(jobId);
-      toast({ title: 'Job removed from saved', variant: 'default' });
-    } else {
-      newSaved.add(jobId);
-      toast({ title: 'Job saved successfully', variant: 'default' });
+
+  useEffect(() => {
+    loadSavedJobs();
+  }, []);
+
+  useEffect(() => {
+    fetchJobs();
+  }, [searchQuery, minSalary, maxSalary, educationLevel, minExperience, maxExperience, industry, jobStatusFilter, sortBy, sortOrder, page]);
+
+  // Deep link handling: scroll to job id from ?job= query
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const targetId = params.get('job');
+    if (!targetId) return;
+
+    setHighlightJobId(targetId);
+
+    // Open the detail modal once when the job is present
+    if (!openedFromParam.current) {
+      const targetJob = jobs.find((j) => j.id === targetId);
+      if (targetJob) {
+        setSelectedJobId(targetId);
+        setSelectedJob(targetJob);
+        setViewModalOpen(true);
+        openedFromParam.current = true;
+      }
     }
-    setSavedJobs(newSaved);
-    localStorage.setItem('savedJobs', JSON.stringify(Array.from(newSaved)));
+
+    setTimeout(() => {
+      const el = cardRefs.current[targetId];
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 200);
+
+    const timeout = setTimeout(() => setHighlightJobId(null), 3200);
+    return () => clearTimeout(timeout);
+  }, [jobs]);
+
+  const toggleSaveJob = (jobId: string) => {
+    const nextSaved = new Set(savedJobs);
+    if (nextSaved.has(jobId)) {
+      nextSaved.delete(jobId);
+      toast({ title: 'Removed from saved', description: 'This job is no longer in your saved list.' });
+    } else {
+      nextSaved.add(jobId);
+      toast({ title: 'Job saved', description: 'Find all saved roles under the spotlight filter.' });
+    }
+    setSavedJobs(nextSaved);
+    localStorage.setItem('savedJobs', JSON.stringify(Array.from(nextSaved)));
   };
 
-  const handleApply = (vacancy: JobVacancy) => {
-    setSelectedVacancyForApply(vacancy);
+  const handleApply = (job: Job) => {
+    setSelectedJobForApply(job);
     setApplyModalOpen(true);
   };
 
-  const handleApplicationSuccess = () => {
-    toast({
-      title: 'Success',
-      description: 'Application submitted successfully',
-    });
-    // Optionally refresh the job list or update UI
+  const handleShare = async (job: Job) => {
+    const url = `${window.location.origin}/jobseeker/jobs${job.id ? `?job=${job.id}` : ''}`;
+    const text = `Check out this job: ${job.positionTitle || job.title || 'Job opportunity'} at ${job.establishmentName || 'an employer'} (${url})`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: job.positionTitle || job.title || 'Job opportunity', text, url });
+        toast({ title: 'Shared', description: 'Job link sent via your native share options.' });
+        return;
+      } catch (err) {
+        // If user cancels, silently ignore
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({ title: 'Link copied', description: 'Job link copied to clipboard.' });
+    } catch (err) {
+      toast({ title: 'Unable to share', description: 'Copy failed. Please try again.', variant: 'destructive' });
+    }
   };
 
-  const handleViewVacancy = (vacancy: any) => {
-    setSelectedVacancyId(vacancy.id);
+  const handleApplicationSuccess = () => {
+    toast({ title: 'Application submitted', description: 'We will notify you once the employer reviews it.' });
+  };
+
+  const handleViewJob = (job: Job) => {
+    setSelectedJobId(job.id ?? null);
+    setSelectedJob(job);
     setViewModalOpen(true);
   };
-  
+
   const clearAllFilters = () => {
     setSearchQuery('');
     setMinSalary('');
@@ -140,473 +249,587 @@ export default function JobseekerJobsPage() {
     setMaxExperience('');
     setIndustry('');
     setJobStatusFilter('');
+    setSpotlightFilter('all');
     setPage(1);
   };
-  
+
   const hasActiveFilters = useMemo(() => {
-    return !!(searchQuery || minSalary || maxSalary || educationLevel || 
-              minExperience || maxExperience || industry || jobStatusFilter);
-  }, [searchQuery, minSalary, maxSalary, educationLevel, minExperience, 
-      maxExperience, industry, jobStatusFilter]);
-  
-  const totalPages = Math.ceil(total / itemsPerPage);
+    return Boolean(
+      searchQuery ||
+        minSalary ||
+        maxSalary ||
+        educationLevel ||
+        minExperience ||
+        maxExperience ||
+        industry ||
+        jobStatusFilter ||
+        spotlightFilter !== 'all'
+    );
+  }, [searchQuery, minSalary, maxSalary, educationLevel, minExperience, maxExperience, industry, jobStatusFilter, spotlightFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(total / itemsPerPage));
+
+  const spotlightFilteredJobs = useMemo(
+    () => filterJobsBySpotlight(spotlightFilter, jobs, savedJobs),
+    [jobs, savedJobs, spotlightFilter]
+  );
+
+  const spotlightCounts = useMemo(() => {
+    const result = {} as Record<SpotlightFilter, number>;
+    SPOTLIGHT_FILTERS.forEach((filter) => {
+      result[filter.value] = filterJobsBySpotlight(filter.value, jobs, savedJobs).length;
+    });
+    return result;
+  }, [jobs, savedJobs]);
+
+  const displayedJobs = spotlightFilteredJobs;
+
+  const jobInsights = useMemo(() => {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const openings = jobs.reduce((acc, job) => acc + (Number(job.vacantPositions) || 0), 0);
+    const newThisWeek = jobs.filter((job) => {
+      if (!job.createdAt) return false;
+      const createdAt = new Date(job.createdAt);
+      return !Number.isNaN(createdAt.valueOf()) && createdAt >= sevenDaysAgo;
+    }).length;
+    const totalSalary = jobs.reduce((acc, job) => acc + (job.startingSalaryOrWage || 0), 0);
+    const averageSalary = jobs.length ? Math.round(totalSalary / jobs.length) : 0;
+
+    return {
+      openings,
+      newThisWeek,
+      averageSalary,
+      saved: savedJobs.size,
+    };
+  }, [jobs, savedJobs]);
+
+  const averageSalaryDisplay = jobInsights.averageSalary
+    ? `₱${jobInsights.averageSalary.toLocaleString()}`
+    : '—';
+
+  const activeFilterBadges = [
+    searchQuery
+      ? {
+          key: 'search',
+          label: `Keyword: ${searchQuery}`,
+          clear: () => {
+            setSearchQuery('');
+            setPage(1);
+          },
+        }
+      : null,
+    minSalary
+      ? {
+          key: 'minSalary',
+          label: `Min ₱${Number(minSalary).toLocaleString()}`,
+          clear: () => {
+            setMinSalary('');
+            setPage(1);
+          },
+        }
+      : null,
+    maxSalary
+      ? {
+          key: 'maxSalary',
+          label: `Max ₱${Number(maxSalary).toLocaleString()}`,
+          clear: () => {
+            setMaxSalary('');
+            setPage(1);
+          },
+        }
+      : null,
+    educationLevel
+      ? {
+          key: 'education',
+          label: `Education: ${educationLevel}`,
+          clear: () => {
+            setEducationLevel('');
+            setPage(1);
+          },
+        }
+      : null,
+    minExperience
+      ? {
+          key: 'minExp',
+          label: `Min exp: ${minExperience}y`,
+          clear: () => {
+            setMinExperience('');
+            setPage(1);
+          },
+        }
+      : null,
+    maxExperience
+      ? {
+          key: 'maxExp',
+          label: `Max exp: ${maxExperience}y`,
+          clear: () => {
+            setMaxExperience('');
+            setPage(1);
+          },
+        }
+      : null,
+    industry
+      ? {
+          key: 'industry',
+          label: `Industry: ${industry}`,
+          clear: () => {
+            setIndustry('');
+            setPage(1);
+          },
+        }
+      : null,
+    jobStatusFilter
+      ? {
+          key: 'jobType',
+          label: `Job type: ${JOB_TYPE_LABELS[jobStatusFilter] || jobStatusFilter}`,
+          clear: () => {
+            setJobStatusFilter('');
+            setPage(1);
+          },
+        }
+      : null,
+    spotlightFilter !== 'all'
+      ? {
+          key: 'spotlight',
+          label: `Spotlight: ${SPOTLIGHT_FILTERS.find((item) => item.value === spotlightFilter)?.label ?? ''}`,
+          clear: () => setSpotlightFilter('all'),
+        }
+      : null,
+  ].filter((chip): chip is ActiveFilterBadge => Boolean(chip));
+
+  const activeFilterCount = activeFilterBadges.length;
+  const spotlightLabel = SPOTLIGHT_FILTERS.find((item) => item.value === spotlightFilter)?.label ?? 'All jobs';
 
   return (
-    <div className="p-6 max-w-[1600px] mx-auto">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-slate-900 flex items-center gap-2">
-          <Briefcase size={28} />
-          Find Jobs
-        </h1>
-        <p className="text-slate-600 mt-1">Browse and apply for available job vacancies in General Santos City</p>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-sky-50 to-slate-100">
+      <div className="mx-auto max-w-7xl space-y-6 p-6">
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-600 via-purple-600 to-rose-500 p-8 text-white shadow-lg">
+          <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-3">
+              <Badge variant="secondary" className="w-fit border-white/30 bg-white/20 text-white">
+                PESO Job Board
+              </Badge>
+              <div className="flex items-center gap-2 text-sm text-white/80">
+                <Sparkles className="h-4 w-4" />
+                <span>Human-curated roles, updated daily</span>
+              </div>
+              {/* Retain typography but avoid h1 since navbar owns page title. */}
+              <p className="text-3xl font-semibold leading-tight md:text-4xl">
+                Discover roles crafted for General Santos City talents
+              </p>
+              <p className="text-sm text-white/80 md:max-w-2xl">
+                Browse verified listings from employers while enjoying the same clean, modern layout admins use to manage
+                postings.
+              </p>
+            </div>
+            <div className="rounded-2xl bg-white/15 p-5 text-white shadow-2xl backdrop-blur">
+              <p className="text-xs uppercase tracking-[0.25em] text-white/70">Live roles</p>
+              <p className="mt-2 text-4xl font-semibold">{total.toLocaleString()}</p>
+              <p className="text-xs text-white/80">
+                {jobInsights.newThisWeek} new this week · {jobInsights.openings.toLocaleString()} openings
+              </p>
+            </div>
+          </div>
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.4),_transparent_60%)]" />
+        </section>
 
-      {/* Search Bar and Sort */}
-      <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 mb-4">
-        <div className="flex gap-3 items-center flex-wrap">
-          <div className="flex-1 min-w-[300px]">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+        <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
+              <TrendingUp className="h-4 w-4 text-indigo-500" />
+              New this week
+            </div>
+            <p className="mt-2 text-3xl font-semibold text-slate-900">{jobInsights.newThisWeek}</p>
+            <p className="text-xs text-slate-500">Fresh roles posted in the last 7 days</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
+              <DollarSign className="h-4 w-4 text-emerald-500" />
+              Avg. starting salary
+            </div>
+            <p className="mt-2 text-3xl font-semibold text-slate-900">{averageSalaryDisplay}</p>
+            <p className="text-xs text-slate-500">Based on live listings</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
+              <ShieldCheck className="h-4 w-4 text-emerald-600" />
+              Saved roles
+            </div>
+            <p className="mt-2 text-3xl font-semibold text-slate-900">{jobInsights.saved}</p>
+            <p className="text-xs text-slate-500">Spotlight “Saved” to view them quickly</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
+              <Briefcase className="h-4 w-4 text-indigo-500" />
+              Total openings
+            </div>
+            <p className="mt-2 text-3xl font-semibold text-slate-900">{jobInsights.openings.toLocaleString()}</p>
+            <p className="text-xs text-slate-500">Across all visible postings</p>
+          </div>
+        </section>
+
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="Search by job title, company, or skills..."
+                placeholder="Search by job title, employer, or skills"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
               />
             </div>
-          </div>
-          
-          <Button
-            variant={showFilters ? "default" : "outline"}
-            onClick={() => setShowFilters(!showFilters)}
-            className="gap-2"
-          >
-            <Filter size={18} />
-            {showFilters ? 'Hide Filters' : 'Show Filters'}
-            {hasActiveFilters && (
-              <span className="ml-1 px-1.5 py-0.5 bg-purple-600 text-white text-xs rounded-full">
-                {[searchQuery, minSalary, maxSalary, educationLevel, minExperience, maxExperience, industry, jobStatusFilter].filter(Boolean).length}
-              </span>
-            )}
-          </Button>
-          
-          <Select value={sortBy} onValueChange={(val: any) => setSortBy(val)}>
-            <SelectTrigger className="w-[180px]">
-              <ArrowUpDown size={16} className="mr-2" />
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="date">
-                <div className="flex items-center gap-2">
-                  <Calendar size={14} />
-                  Date Posted
-                </div>
-              </SelectItem>
-              <SelectItem value="salary">
-                <div className="flex items-center gap-2">
-                  <DollarSign size={14} />
-                  Salary
-                </div>
-              </SelectItem>
-              <SelectItem value="relevance">
-                <div className="flex items-center gap-2">
-                  <TrendingUp size={14} />
-                  Relevance
-                </div>
-              </SelectItem>
-            </SelectContent>
-          </Select>
-          
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-            title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
-          >
-            <ArrowUpDown size={18} className={sortOrder === 'desc' ? 'rotate-180' : ''} />
-          </Button>
-        </div>
-      </div>
-
-      {/* Advanced Filters */}
-      {showFilters && (
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 mb-4">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <SlidersHorizontal size={20} />
-              Advanced Filters
-            </h2>
-            {hasActiveFilters && (
-              <Button variant="ghost" size="sm" onClick={clearAllFilters} className="text-purple-600 hover:text-purple-700">
-                <X size={16} className="mr-1" />
-                Clear All
+            <div className="flex flex-wrap gap-2">
+              <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortBy)}>
+                <SelectTrigger className="w-[180px] rounded-xl border-slate-200 bg-slate-50 text-sm">
+                  <ArrowUpDown className="mr-2 h-4 w-4" />
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="date">Date posted</SelectItem>
+                  <SelectItem value="salary">Salary</SelectItem>
+                  <SelectItem value="relevance">Relevance</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                className="rounded-xl border-slate-200"
+                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+              >
+                <ArrowUpDown className={`h-4 w-4 ${sortOrder === 'desc' ? 'rotate-180' : ''}`} />
               </Button>
-            )}
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {/* Salary Range */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-1">
-                <DollarSign size={14} />
-                Min Salary (₱)
-              </label>
-              <input
-                type="number"
-                value={minSalary}
-                onChange={(e) => setMinSalary(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="0"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-1">
-                <DollarSign size={14} />
-                Max Salary (₱)
-              </label>
-              <input
-                type="number"
-                value={maxSalary}
-                onChange={(e) => setMaxSalary(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="No limit"
-              />
-            </div>
-            
-            {/* Education Level */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-1">
-                <GraduationCap size={14} />
-                Education Level
-              </label>
-              <Select value={educationLevel || "all"} onValueChange={(val) => setEducationLevel(val === "all" ? "" : val)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Any" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Any</SelectItem>
-                  <SelectItem value="High School">High School</SelectItem>
-                  <SelectItem value="Senior High">Senior High School</SelectItem>
-                  <SelectItem value="Vocational">Vocational/Technical</SelectItem>
-                  <SelectItem value="College">College Level</SelectItem>
-                  <SelectItem value="Bachelor">Bachelor's Degree</SelectItem>
-                  <SelectItem value="Master">Master's Degree</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Experience Range */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Min Experience (years)
-              </label>
-              <input
-                type="number"
-                value={minExperience}
-                onChange={(e) => setMinExperience(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="0"
-                min="0"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Max Experience (years)
-              </label>
-              <input
-                type="number"
-                value={maxExperience}
-                onChange={(e) => setMaxExperience(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="No limit"
-                min="0"
-              />
-            </div>
-            
-            {/* Job Status */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-1">
-                <Building2 size={14} />
-                Job Type
-              </label>
-              <Select value={jobStatusFilter || "all"} onValueChange={(val) => setJobStatusFilter(val === "all" ? "" : val)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Any" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Any</SelectItem>
-                  <SelectItem value="P">Permanent (P)</SelectItem>
-                  <SelectItem value="T">Temporary (T)</SelectItem>
-                  <SelectItem value="C">Contractual (C)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            {/* Industry */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Industry
-              </label>
-              <input
-                type="text"
-                value={industry}
-                onChange={(e) => setIndustry(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="e.g., IT, Healthcare"
-              />
+              <Button
+                variant={showFilters ? 'secondary' : 'outline'}
+                className="rounded-xl border-slate-200 bg-slate-50 text-slate-700"
+                onClick={() => setShowFilters((prev) => !prev)}
+              >
+                <Filter className="mr-2 h-4 w-4" />
+                {showFilters ? 'Hide filters' : 'Show filters'}
+                {activeFilterCount > 0 && (
+                  <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </Button>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Results Count and Active Filters */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="text-sm text-slate-600">
-          {loading ? (
-            'Loading...'
-          ) : (
-            <>
-              Showing <span className="font-semibold text-slate-900">{vacancies.length}</span> of{' '}
-              <span className="font-semibold text-slate-900">{total}</span> job{total === 1 ? '' : 's'}
-              {hasActiveFilters && ' (filtered)'}
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Content */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-            <p className="text-slate-600">Loading job vacancies...</p>
-          </div>
-        </div>
-      ) : vacancies.length === 0 ? (
-        <div className="text-center py-20 bg-slate-50 rounded-lg border border-slate-200">
-          <Briefcase size={48} className="mx-auto text-slate-400 mb-4" />
-          <p className="text-slate-600 text-lg mb-2 font-medium">
-            {hasActiveFilters ? 'No jobs match your filters' : 'No job vacancies available at the moment'}
+          <p className="flex items-center gap-2 text-xs text-slate-500">
+            <ShieldCheck className="h-4 w-4 text-emerald-500" />
+            Search is synced with the admin job review board so you always see what they publish.
           </p>
-          <p className="text-slate-500 text-sm mb-4">
-            {hasActiveFilters ? 'Try adjusting your search criteria' : 'Check back later for new opportunities'}
-          </p>
-          {hasActiveFilters && (
-            <Button
-              variant="outline"
-              onClick={clearAllFilters}
-              className="mt-2"
-            >
-              <X size={16} className="mr-2" />
-              Clear All Filters
+        </section>
+
+        <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-base font-semibold text-slate-900">Spotlight filters</p>
+              <p className="text-sm text-slate-500">The same quick views admins rely on to triage jobs.</p>
+            </div>
+            <Button variant="ghost" size="sm" disabled={spotlightFilter === 'all'} onClick={() => setSpotlightFilter('all')}>
+              Reset
             </Button>
-          )}
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-6">
-            {vacancies.map((vacancy) => {
-              const isSaved = vacancy.id ? savedJobs.has(vacancy.id) : false;
-              
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {SPOTLIGHT_FILTERS.map((filter) => {
+              const isActive = filter.value === spotlightFilter;
+              const count = spotlightCounts[filter.value] ?? 0;
               return (
-                <div
-                  key={vacancy.id}
-                  className="group bg-white rounded-xl border border-slate-200 hover:border-purple-300 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden flex flex-col"
+                <button
+                  key={filter.value}
+                  onClick={() => {
+                    setSpotlightFilter(filter.value);
+                    setPage(1);
+                  }}
+                  className={`rounded-2xl border p-4 text-left transition ${
+                    isActive ? 'border-indigo-500 bg-indigo-50 shadow-sm' : 'border-slate-200 bg-white hover:border-indigo-200 hover:shadow-sm'
+                  }`}
                 >
-                  {/* Header */}
-                  <div className="bg-gradient-to-r from-purple-50 to-blue-50 p-4 border-b border-slate-200">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="flex-1">
-                        <h3 className="text-lg font-bold text-slate-900 line-clamp-2 group-hover:text-purple-600 transition-colors">
-                          {vacancy.positionTitle}
-                        </h3>
-                        <div className="flex items-center gap-1 text-sm text-slate-600 mt-1">
-                          <Building2 size={14} />
-                          <p className="line-clamp-1">{vacancy.establishmentName}</p>
-                        </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 flex-shrink-0"
-                        onClick={() => vacancy.id && toggleSaveJob(vacancy.id)}
-                      >
-                        {isSaved ? (
-                          <BookmarkCheck className="text-purple-600" size={18} />
-                        ) : (
-                          <Bookmark className="text-slate-400" size={18} />
-                        )}
-                      </Button>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{filter.label}</p>
+                      <p className="text-xs text-slate-500">{filter.description}</p>
                     </div>
-                    
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full whitespace-nowrap">
-                        {vacancy.vacantPositions || 1} {vacancy.vacantPositions === 1 ? 'opening' : 'openings'}
-                      </span>
-                      <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
-                        {vacancy.jobStatus === 'P' ? 'Permanent (P)' : 
-                         vacancy.jobStatus === 'T' ? 'Temporary (T)' : 
-                         vacancy.jobStatus === 'C' ? 'Contractual (C)' : 'N/A'}
-                      </span>
-                    </div>
+                    <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                      {count} roles
+                    </Badge>
                   </div>
-
-                  {/* Content */}
-                  <div className="p-4 flex-1 flex flex-col">
-                    {/* Salary Highlight */}
-                    <div className="mb-4 p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-xs text-green-700 font-medium mb-0.5">Starting Salary/Wage</p>
-                          <p className="text-xl font-bold text-green-800">
-                            ₱{(vacancy.startingSalaryOrWage || 0).toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Key Details */}
-                    <div className="space-y-2.5 mb-4">
-                      <div className="flex items-start gap-2">
-                        <GraduationCap size={16} className="text-slate-500 mt-0.5 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-slate-600 font-medium">Education</p>
-                          <p className="text-sm text-slate-900 font-medium line-clamp-1">
-                            {vacancy.minimumEducationRequired || 'Not specified'}
-                          </p>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-start gap-2">
-                        <Clock size={16} className="text-slate-500 mt-0.5 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-slate-600 font-medium">Experience</p>
-                          <p className="text-sm text-slate-900 font-medium">
-                            {vacancy.yearsOfExperienceRequired === 0 
-                              ? 'No experience required' 
-                              : `${vacancy.yearsOfExperienceRequired}+ years`}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Skills */}
-                    {vacancy.mainSkillOrSpecialization && (
-                      <div className="mb-4 pb-4 border-b border-slate-200">
-                        <p className="text-xs text-slate-600 font-medium mb-1.5">Required Skills</p>
-                        <p className="text-sm text-slate-800 line-clamp-2">
-                          {vacancy.mainSkillOrSpecialization}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Timestamp */}
-                    <div className="mt-auto pt-3">
-                      <p className="text-xs text-slate-500 flex items-center gap-1">
-                        <Calendar size={12} />
-                        Posted {formatRelativeTime(vacancy.createdAt || new Date().toISOString())}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Footer - Action Buttons */}
-                  <div className="px-4 py-3 bg-slate-50 border-t border-slate-200">
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 text-xs h-9 gap-1.5 hover:bg-slate-100"
-                        onClick={() => handleViewVacancy(vacancy)}
-                      >
-                        <Eye size={15} />
-                        View Details
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="flex-1 text-xs h-9 gap-1.5 bg-purple-600 hover:bg-purple-700"
-                        onClick={() => handleApply(vacancy)}
-                      >
-                        <Briefcase size={15} />
-                        Apply Now
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+                </button>
               );
             })}
           </div>
-          
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 mt-8">
-              <Button
-                variant="outline"
-                onClick={() => setPage(Math.max(1, page - 1))}
-                disabled={page === 1}
-              >
-                Previous
-              </Button>
-              
-              <div className="flex items-center gap-1">
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  let pageNum;
-                  if (totalPages <= 5) {
-                    pageNum = i + 1;
-                  } else if (page <= 3) {
-                    pageNum = i + 1;
-                  } else if (page >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i;
-                  } else {
-                    pageNum = page - 2 + i;
-                  }
-                  
-                  return (
-                    <Button
-                      key={pageNum}
-                      variant={page === pageNum ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setPage(pageNum)}
-                      className="w-10"
-                    >
-                      {pageNum}
-                    </Button>
-                  );
-                })}
-              </div>
-              
-              <Button
-                variant="outline"
-                onClick={() => setPage(Math.min(totalPages, page + 1))}
-                disabled={page === totalPages}
-              >
-                Next
-              </Button>
-              
-              <span className="ml-4 text-sm text-slate-600">
-                Page {page} of {totalPages}
-              </span>
-            </div>
-          )}
-        </>
-      )}
+        </section>
 
-      {/* View Job Vacancy Modal */}
+        {showFilters && (
+          <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <label className="mb-2 text-sm font-medium text-slate-700">Minimum salary (₱)</label>
+                <input
+                  type="number"
+                  value={minSalary}
+                  onChange={(e) => setMinSalary(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  placeholder="e.g., 20000"
+                />
+              </div>
+              <div>
+                <label className="mb-2 text-sm font-medium text-slate-700">Maximum salary (₱)</label>
+                <input
+                  type="number"
+                  value={maxSalary}
+                  onChange={(e) => setMaxSalary(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  placeholder="e.g., 60000"
+                />
+              </div>
+              <div>
+                <label className="mb-2 text-sm font-medium text-slate-700">Education level</label>
+                <input
+                  type="text"
+                  value={educationLevel}
+                  onChange={(e) => setEducationLevel(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  placeholder="e.g., Bachelor's"
+                />
+              </div>
+              <div>
+                <label className="mb-2 text-sm font-medium text-slate-700">Minimum experience (years)</label>
+                <input
+                  type="number"
+                  value={minExperience}
+                  onChange={(e) => setMinExperience(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label className="mb-2 text-sm font-medium text-slate-700">Maximum experience (years)</label>
+                <input
+                  type="number"
+                  value={maxExperience}
+                  onChange={(e) => setMaxExperience(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  placeholder="10"
+                />
+              </div>
+              <div>
+                <label className="mb-2 text-sm font-medium text-slate-700">Employment type</label>
+                <Select value={jobStatusFilter} onValueChange={(value) => setJobStatusFilter(value)}>
+                  <SelectTrigger className="w-full rounded-xl border-slate-200 bg-slate-50 text-sm">
+                    <SelectValue placeholder="Any" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Any</SelectItem>
+                    <SelectItem value="P">{JOB_TYPE_LABELS.P}</SelectItem>
+                    <SelectItem value="T">{JOB_TYPE_LABELS.T}</SelectItem>
+                    <SelectItem value="C">{JOB_TYPE_LABELS.C}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="mb-2 text-sm font-medium text-slate-700">Industry</label>
+                <input
+                  type="text"
+                  value={industry}
+                  onChange={(e) => setIndustry(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  placeholder="e.g., IT, Healthcare"
+                />
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeFilterBadges.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {activeFilterBadges.map((badge) => (
+              <span
+                key={badge.key}
+                className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm"
+              >
+                {badge.label}
+                {badge.clear && (
+                  <button
+                    type="button"
+                    onClick={badge.clear}
+                    className="rounded-full p-0.5 text-slate-500 transition hover:bg-slate-100"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 px-4 py-3 text-sm text-slate-600 md:flex md:items-center md:justify-between">
+          <span>
+            {loading
+              ? 'Loading results...'
+              : `Showing ${displayedJobs.length} of ${total.toLocaleString()} opportunities`}
+          </span>
+          <span className="mt-2 inline-flex items-center gap-1 text-xs text-slate-500 md:mt-0">
+            <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
+            {spotlightFilter === 'all' ? 'Default view' : `Spotlight: ${spotlightLabel}`}
+          </span>
+        </div>
+
+        {loading ? (
+          <div className="flex h-72 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="h-12 w-12 animate-spin rounded-full border-2 border-indigo-100 border-t-indigo-600" />
+            <p className="mt-4 text-sm text-slate-500">Loading job vacancies...</p>
+          </div>
+        ) : displayedJobs.length === 0 ? (
+          <div className="flex flex-col items-center gap-4 rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+            <Briefcase className="h-12 w-12 text-slate-300" />
+            <div>
+              <p className="text-lg font-semibold text-slate-800">
+                {jobs.length === 0 ? 'No job vacancies available right now' : 'No roles match your current filters'}
+              </p>
+              <p className="text-sm text-slate-500">
+                {jobs.length === 0
+                  ? 'Check back soon or enable notifications to get alerts.'
+                  : 'Try adjusting salary, education, or spotlight filters.'}
+              </p>
+            </div>
+            {hasActiveFilters && (
+              <Button variant="outline" className="gap-2" onClick={clearAllFilters}>
+                <X className="h-4 w-4" /> Clear filters
+              </Button>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {displayedJobs.map((job) => (
+                <div
+                  key={job.id || `${job.positionTitle}-${job.establishmentName}`}
+                  ref={(el) => {
+                    if (job.id) cardRefs.current[job.id] = el;
+                  }}
+                >
+                  <CompactJobCard
+                    job={job}
+                    statusBadge={
+                      <Badge
+                        variant="outline"
+                        className="bg-emerald-100 text-emerald-700 border-emerald-300 border font-medium text-[10px] px-2 py-0"
+                      >
+                        Active
+                      </Badge>
+                    }
+                    headerRight={
+                      job.id ? (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                            onClick={() => handleShare(job)}
+                            title="Share job"
+                          >
+                            <Share2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                            onClick={() => toggleSaveJob(job.id!)}
+                            title={savedJobs.has(job.id) ? 'Remove from saved' : 'Save job'}
+                          >
+                            {savedJobs.has(job.id) ? (
+                              <BookmarkCheck className="h-4 w-4 text-indigo-600" />
+                            ) : (
+                              <Bookmark className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      ) : null
+                    }
+                    showSkills
+                    showDescription={false}
+                    footer={
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white h-9"
+                          onClick={() => handleApply(job)}
+                        >
+                          Apply Now
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 h-9"
+                          onClick={() => handleViewJob(job)}
+                        >
+                          View Details
+                        </Button>
+                      </div>
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+
+            {totalPages > 1 && (
+              <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+                <Button variant="outline" onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}>
+                  Previous
+                </Button>
+                <div className="flex gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, index) => {
+                    let pageNumber: number;
+                    if (totalPages <= 5) {
+                      pageNumber = index + 1;
+                    } else if (page <= 3) {
+                      pageNumber = index + 1;
+                    } else if (page >= totalPages - 2) {
+                      pageNumber = totalPages - 4 + index;
+                    } else {
+                      pageNumber = page - 2 + index;
+                    }
+
+                    return (
+                      <Button
+                        key={pageNumber}
+                        size="sm"
+                        variant={page === pageNumber ? 'default' : 'outline'}
+                        className="w-10"
+                        onClick={() => setPage(pageNumber)}
+                      >
+                        {pageNumber}
+                      </Button>
+                    );
+                  })}
+                </div>
+                <Button variant="outline" onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages}>
+                  Next
+                </Button>
+                <span className="ml-4 text-xs text-slate-500">Page {page} of {totalPages}</span>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
       <ViewJobVacancyModal
         open={viewModalOpen}
         onOpenChange={setViewModalOpen}
-        vacancyId={selectedVacancyId || undefined}
-        onApply={handleApply}
+        vacancyId={selectedJobId || undefined}
+        onApply={handleApply as any}
+        initialVacancy={selectedJob || undefined}
       />
 
-      {/* Apply Job Modal */}
       <ApplyJobModal
         open={applyModalOpen}
         onOpenChange={setApplyModalOpen}
-        vacancy={selectedVacancyForApply}
+        vacancy={selectedJobForApply as any}
         onSuccess={handleApplicationSuccess}
       />
     </div>
