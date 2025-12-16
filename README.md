@@ -5,10 +5,9 @@
 ![GensanWorks Banner](https://img.shields.io/badge/GensanWorks-Employment%20Platform-blue?style=for-the-badge)
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue?logo=typescript)](https://www.typescriptlang.org/)
-[![React](https://img.shields.io/badge/React-19.0-61dafb?logo=react)](https://reactjs.org/)
-[![Express](https://img.shields.io/badge/Express-5.0-green?logo=express)](https://expressjs.com/)
-[![Vite](https://img.shields.io/badge/Vite-6.0-646cff?logo=vite)](https://vitejs.dev/)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![React](https://img.shields.io/badge/React-18-61dafb?logo=react)](https://react.dev/)
+[![Express](https://img.shields.io/badge/Express-5.1-green?logo=express)](https://expressjs.com/)
+[![Vite](https://img.shields.io/badge/Vite-6.4-646cff?logo=vite)](https://vitejs.dev/)
 
 **Modern Full-Stack Employment Management System with AI-Powered Job Matching**
 
@@ -65,7 +64,7 @@
 
 - **Node.js** v18+ and npm
 - **Git** for version control
-- **SQLite** (bundled with the project)
+- **SQLite / LibSQL** (default DB is a local file)
 
 ### Installation
 
@@ -80,17 +79,29 @@
    npm install
    ```
 
-3. **Set up environment variables**
+3. **Set up environment variables (optional)**
+
+   This repo does not ship an `.env.example`. You can create a `.env` at the repo root if you want to override defaults:
+
    ```bash
-   # Create .env file in the root directory
-   cp .env.example .env
-   
-   # Edit .env and add your configuration:
-   # - PORT=5000
-   # - NODE_ENV=development
-   # - DATABASE_URL=./app.db
-   # - JWT_SECRET=your_secret_key
-   # - GROQ_API_KEY=your_groq_api_key
+   # Server
+   PORT=5000
+   NODE_ENV=development
+
+   # Database
+   DATABASE_URL=file:./app.db
+
+   # Auth
+   JWT_SECRET=dev-secret-change-in-production
+   BCRYPT_SALT_ROUNDS=10
+
+   # AI matching (optional)
+   GROQ_API_KEY=your_groq_api_key
+
+   # Google OAuth (optional)
+   GOOGLE_CLIENT_ID=...
+   GOOGLE_CLIENT_SECRET=...
+   GOOGLE_CALLBACK_URL=http://localhost:5000/auth/google/callback
    ```
 
 4. **Initialize the database**
@@ -100,8 +111,10 @@
 
 5. **Seed the database (optional)**
    ```bash
-   npm run db:seed-1232
+   npm run db:seed
    ```
+
+   Note: `npm run db:seed-1232` is intended for large demo datasets. If your branch is missing `scripts/seed-1232-diverse-applicants.ts`, use `npm run db:seed` instead.
 
 6. **Start the development server**
    ```bash
@@ -117,15 +130,22 @@
 
 After seeding, you can use these demo accounts:
 
-- **Admin**: `admin@gensanworks.com` / `admin123`
-- **Employer**: Check seeded employer accounts
-- **Job Seeker**: Check seeded applicant accounts
+- **Admin**: `admin@local.test` / `adminpass`
+- **Employer**: `employer01@gensanworks-demo.ph` / `EmployerDemoPass123!`
+- **Job Seeker**: `applicant001@demo.gensanworks.com` / `JobseekerDemoPass123!`
 
 ---
 
 ## 📚 Documentation
 
 Comprehensive documentation is available in [`DOCUMENTATION.md`](DOCUMENTATION.md), covering:
+
+- Architecture overview (client/server/shared)
+- Database + migrations (Drizzle)
+- API reference (OpenAPI)
+- Deployment and environment variables
+
+Interactive API docs are also available at `http://localhost:5000/docs` after running the dev server.
 
 
 ## Security & Privacy
@@ -148,7 +168,7 @@ For quick AI agent onboarding, see [`.github/copilot-instructions.md`](.github/c
 ## 🛠️ Tech Stack
 
 ### Frontend
-- **React 19** - UI library
+- **React 18** - UI library
 - **TypeScript** - Type safety
 - **Vite** - Build tool and dev server
 - **Tailwind CSS** - Utility-first styling
@@ -239,10 +259,11 @@ npm start                # Run production build
 ```bash
 npm run db:push          # Push schema changes to database
 npm run db:seed          # Seed database with sample data
-npm run db:seed-1232     # Seed with 1232 diverse applicants
+npm run db:seed-1232     # Seed with 1232 diverse applicants (if script exists in your branch)
 npm run db:clear-applicants  # Clear all applicants
 npm run db:reseed        # Clear and reseed database
 npm run db:migrate       # Generate migration files
+npm run migrate           # Generate + push migrations
 ```
 
 ### Deterministic employer + job seeds
@@ -260,15 +281,28 @@ npx tsx scripts/seed-employers-with-jobs.ts
 npm test                 # Run test suite
 ```
 
+### API Docs
+
+Once running, you can browse:
+
+- Swagger UI: `GET /docs`
+- OpenAPI JSON: `GET /openapi.json`
+- OpenAPI YAML: `GET /openapi.yaml`
+
 ---
 
 ## 🌐 API Endpoints
 
+The API surface is actively evolving; for the complete, up-to-date list, use `http://localhost:5000/docs`.
+
 ### Authentication
-- `POST /api/auth/login` - User login (admin/employer/jobseeker)
-- `POST /api/auth/signup` - User registration
+- `POST /api/auth/login` - User login (admin/employer/jobseeker/freelancer)
+- `POST /api/auth/signup/jobseeker` - Jobseeker registration
+- `POST /api/auth/signup/employer` - Employer registration
+- `POST /api/auth/signup/admin` - Admin creation (typically admin-only)
 - `POST /api/auth/logout` - User logout
 - `GET /api/auth/me` - Get current user
+- `GET /auth/google` - Google OAuth (optional)
 
 ### Applicants (Job Seekers)
 - `GET /api/applicants` - List all applicants (admin)
@@ -277,10 +311,12 @@ npm test                 # Run test suite
 - `POST /api/applicants` - Create new applicant
 
 ### Employers
-- `GET /api/employers` - List all employers (admin)
-- `GET /api/employers/:id` - Get employer details
-- `PUT /api/employers/:id` - Update employer profile
-- `POST /api/employers` - Create new employer
+- `GET /api/employers` - List employers
+- `GET /api/employers/:id` - Get employer details (admin-only)
+- `PUT /api/employers/:id` - Update employer (admin-only)
+- `POST /api/employers` - Create employer (admin-only)
+- `GET /api/employer/profile` - Current employer profile
+- `PUT /api/employer/profile` - Update employer profile
 
 ### Job Vacancies
 - `GET /api/job-vacancies` - List all job vacancies
@@ -289,17 +325,27 @@ npm test                 # Run test suite
 - `PUT /api/job-vacancies/:id` - Update job vacancy
 - `DELETE /api/job-vacancies/:id` - Delete job vacancy
 
+### Jobs
+- `GET /api/jobs` - List jobs (public)
+- `POST /api/jobs` - Create job (admin-only)
+- `PUT /api/jobs/:jobId` - Update job (admin-only)
+- `DELETE /api/jobs/:jobId` - Delete job (admin-only)
+- `GET /api/employer/jobs` - Employer jobs
+- `POST /api/employer/jobs` - Create employer job
+
 ### Applications
-- `GET /api/applications` - List applications (filtered by role)
-- `POST /api/applications` - Submit job application
-- `PUT /api/applications/:id` - Update application status
+- `POST /api/jobs/:jobId/apply` - Apply to a job
+- `GET /api/jobseeker/applications` - Jobseeker applications
+- `GET /api/employer/applications` - Employer applications
+- `PUT /api/employer/applications/:id` - Employer updates application status
 
 ### AI Job Matching
 - `GET /api/jobs/:id/match` - Get AI-powered candidate matches for a job
 
 ### Analytics & Reports
-- `GET /api/dashboard/summary` - Dashboard summary statistics
-- `GET /api/dashboard/charts` - Chart data for analytics
+- `GET /api/summary` - Summary cards
+- `GET /api/recent-activities` - Recent activity feed
+- `GET /api/charts/*` - Chart datasets
 - `GET /api/referrals` - Referral slip management
 
 For complete API documentation, see [`DOCUMENTATION.md`](DOCUMENTATION.md#api-reference).
@@ -333,8 +379,11 @@ We welcome contributions! Here's how you can help:
 # Windows PowerShell
 Get-Process node | Stop-Process -Force
 
-# Or change port
-PORT=3000 npm run dev
+# Or change port (PowerShell)
+$env:PORT=3000; npm run dev
+
+# Or change port (cross-platform)
+cross-env PORT=3000 npm run dev
 ```
 
 ### Database Issues
@@ -346,8 +395,8 @@ npm run db:reseed
 
 ### Build Errors
 ```bash
-# Clean install
-rm -rf node_modules package-lock.json
+# Clean install (PowerShell)
+Remove-Item -Recurse -Force node_modules, package-lock.json
 npm install
 npm run check
 ```
@@ -358,7 +407,7 @@ For more issues, see [`DOCUMENTATION.md`](DOCUMENTATION.md#troubleshooting).
 
 ## 📄 License
 
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **MIT License** (see the `license` field in `package.json`).
 
 ---
 
